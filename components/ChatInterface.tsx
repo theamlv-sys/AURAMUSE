@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Asset, Message, ProjectType } from '../types';
+import { Asset, Message, ProjectType, TTSState, StoryBibleEntry } from '../types';
 import { generateWriting, generateStoryboardImage, generateVeoVideo, analyzeMediaContext } from '../services/geminiService';
 import VeoModal from './VeoModal';
 import { useLive } from '../hooks/useLive';
@@ -11,9 +11,16 @@ interface ChatInterfaceProps {
   onUpdateContent: (text: string) => void;
   onReplaceContent: (text: string) => void;
   editorContent: string;
+  onConfigureTTS: (newState: Partial<TTSState>) => void;
+  checkLimit: (type: 'video' | 'image' | 'audio') => boolean;
+  trackUsage: (type: 'video' | 'image') => void;
+  storyBible: StoryBibleEntry[];
 }
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ projectType, assets, onAddAsset, onUpdateContent, onReplaceContent, editorContent }) => {
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ 
+    projectType, assets, onAddAsset, onUpdateContent, onReplaceContent, 
+    editorContent, onConfigureTTS, checkLimit, trackUsage, storyBible 
+}) => {
   const [messages, setMessages] = useState<Message[]>([
     { role: 'model', content: `I'm Muse. I can see what you're writing. Ask me to rewrite sections, generate storyboards, or use the Voice Mode to talk with me directly.` }
   ]);
@@ -39,7 +46,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ projectType, assets, onAd
                 assets, 
                 historyForAI, 
                 editorContent, 
-                true // Explicitly enable search
+                true, // Explicitly enable search
+                storyBible
           );
           const resultText = response.text || "No results found.";
           setMessages(prev => [...prev, { role: 'model', content: resultText }]);
@@ -56,10 +64,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ projectType, assets, onAd
   // Initialize Live Hook
   const { isActive: isLiveActive, isConnecting: isLiveConnecting, volume, start: startLive, stop: stopLive } = useLive({
       onUpdateEditor: onReplaceContent,
+      onAppendEditor: onUpdateContent, // This maps to the append function in App.tsx
       onTriggerSearch: handleTriggerSearch,
+      onConfigureTTS: onConfigureTTS,
       editorContent,
       assets,
-      projectType
+      projectType,
+      chatHistory: messages
   });
 
   const scrollToBottom = () => {
@@ -77,11 +88,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ projectType, assets, onAd
         
         if (lowerInput.includes('storyboard') || (lowerInput.includes('image') && lowerInput.includes('generate'))) {
            // Image Generation Mode
+           if (!checkLimit('image')) {
+               setMessages(prev => [...prev, { role: 'model', content: "You have reached your image generation limit. Please upgrade your plan." }]);
+               return;
+           }
+
            const responseText = "Generating storyboard asset...";
            setMessages(prev => [...prev, { role: 'model', content: responseText }]);
            
            try {
                const b64 = await generateStoryboardImage(userMsg.content);
+               trackUsage('image');
                const newAsset: Asset = {
                    id: Date.now().toString(),
                    type: 'image',
@@ -111,12 +128,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ projectType, assets, onAd
                 assets, 
                 historyForAI, 
                 editorContent, 
-                useSearch
+                useSearch,
+                storyBible
             );
 
             if (response.editorUpdate) {
                 onReplaceContent(response.editorUpdate);
-                setMessages(prev => [...prev, { role: 'model', content: response.text || "I've updated the editor content as requested." }]);
+                setMessages(prev => [...prev, { role: 'model', content: response.text || "I've rewritten the document as requested." }]);
+            } else if (response.editorAppend) {
+                onUpdateContent(response.editorAppend);
+                setMessages(prev => [...prev, { role: 'model', content: response.text || "I've appended the new text to the document." }]);
             } else {
                 setMessages(prev => [...prev, { role: 'model', content: response.text }]);
             }
@@ -147,12 +168,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ projectType, assets, onAd
   };
 
   const handleVeoGenerate = async (prompt: string, imageBase64?: string) => {
+    if (!checkLimit('video')) {
+        setMessages(prev => [...prev, { role: 'model', content: "You have reached your video generation limit (or your plan does not support it). Please upgrade." }]);
+        return;
+    }
+
     const userMsg: Message = { role: 'user', content: `Generate video: ${prompt}` };
     setMessages(prev => [...prev, userMsg]);
     setIsLoading(true);
 
     try {
         const videoUrl = await generateVeoVideo(prompt, imageBase64);
+        trackUsage('video');
         setMessages(prev => [...prev, { role: 'model', content: "Video generated successfully.", type: 'video', mediaUrl: videoUrl }]);
         
         const newAsset: Asset = {

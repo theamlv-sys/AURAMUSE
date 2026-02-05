@@ -1,18 +1,21 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality } from "@google/genai";
-import { updateEditorTool, triggerSearchTool } from '../services/geminiService';
+import { updateEditorTool, appendEditorTool, triggerSearchTool, configureAudioStudioTool } from '../services/geminiService';
 import { createPcmBlob, decodeAudioData, base64ToUint8Array } from '../utils/audioUtils';
-import { Asset, ProjectType } from '../types';
+import { Asset, ProjectType, Message, TTSState, TTSCharacter } from '../types';
 
 interface UseLiveProps {
     onUpdateEditor: (newContent: string) => void;
+    onAppendEditor: (contentToAdd: string) => void;
     onTriggerSearch: (query: string) => Promise<string>;
+    onConfigureTTS: (newState: Partial<TTSState>) => void;
     editorContent: string;
     assets: Asset[];
     projectType: ProjectType;
+    chatHistory: Message[];
 }
 
-export const useLive = ({ onUpdateEditor, onTriggerSearch, editorContent, assets, projectType }: UseLiveProps) => {
+export const useLive = ({ onUpdateEditor, onAppendEditor, onTriggerSearch, onConfigureTTS, editorContent, assets, projectType, chatHistory }: UseLiveProps) => {
     const [isActive, setIsActive] = useState(false);
     const [isConnecting, setIsConnecting] = useState(false);
     const [volume, setVolume] = useState(0);
@@ -25,11 +28,16 @@ export const useLive = ({ onUpdateEditor, onTriggerSearch, editorContent, assets
     const nextStartTimeRef = useRef<number>(0);
     const sessionPromiseRef = useRef<Promise<any> | null>(null);
     const currentEditorContentRef = useRef(editorContent);
-    
-    // Update ref when prop changes
+    const chatHistoryRef = useRef(chatHistory);
+
+    // Update refs when props change
     useEffect(() => {
         currentEditorContentRef.current = editorContent;
     }, [editorContent]);
+    
+    useEffect(() => {
+        chatHistoryRef.current = chatHistory;
+    }, [chatHistory]);
 
     const stop = useCallback(() => {
         setIsActive(false);
@@ -69,9 +77,35 @@ export const useLive = ({ onUpdateEditor, onTriggerSearch, editorContent, assets
 
     const start = useCallback(async () => {
         if (isActive || isConnecting) return;
+        
+        // 1. Check for Hardware/Browser Support before doing anything
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            alert("Microphone access is not supported in this browser or context (requires HTTPS).");
+            return;
+        }
+
         setIsConnecting(true);
 
         try {
+            // 2. Initialize Microphone First (Fail fast if no mic)
+            let stream: MediaStream;
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            } catch (err: any) {
+                console.error("Mic Initialization Error:", err);
+                setIsConnecting(false);
+                if (err.name === 'NotFoundError' || err.message?.includes('device not found')) {
+                    alert("No microphone found. Please connect a microphone and try again.");
+                } else if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                    alert("Microphone permission denied. Please allow access in your browser settings.");
+                } else {
+                    alert(`Could not access microphone: ${err.message}`);
+                }
+                return;
+            }
+
+            mediaStreamRef.current = stream;
+
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             
             // Setup Output Audio
@@ -82,36 +116,32 @@ export const useLive = ({ onUpdateEditor, onTriggerSearch, editorContent, assets
             // Prepare System Instruction
             const assetDesc = assets.map(a => {
                 if(a.type === 'link') return `- Link: ${a.url}`;
-                if(a.type === 'pdf') return `- PDF File: ${a.name} (Content is available if you read the file)`;
+                if(a.type === 'pdf') return `- PDF File: ${a.name}`;
                 return `- ${a.name} (${a.type})`;
             }).join('\n');
 
-            const systemInstruction = `You are Muse's Voice Mode, a highly capable, autonomous creative writing partner.
-            You are connected to a text editor and a media library.
-            
-            CURRENT MODE: ${projectType}
-            
-            YOUR CAPABILITIES:
-            1. You can see the content of the editor.
-            2. You can EDIT the editor content directly using the 'updateEditor' tool.
-            3. You know about the user's uploaded assets (listed below).
-            4. IMPORTANT: If the user asks you to search the web, research a topic, or look up information, use the 'triggerChatSearch' tool. You cannot search the web directly yourself. Tell the user you are putting the results in the chat.
-            
-            BEHAVIOR:
-            - Be concise and conversational.
-            - When the user asks for changes, use the 'updateEditor' tool immediately.
-            - If research is needed, use 'triggerChatSearch'.
-            - Offer creative suggestions proactively.
-            - Speak with a professional yet warm creative director persona.
-            
-            CURRENT ASSETS:
-            ${assetDesc}
-            
-            INITIAL EDITOR CONTENT:
-            """
-            ${currentEditorContentRef.current}
-            """
-            `;
+            // Format recent history to provide context
+            const recentMsgs = chatHistoryRef.current
+                .slice(-10) // Take last 10 messages
+                .filter(m => m.role !== 'system')
+                .map(m => `${m.role.toUpperCase()}: ${m.content}`)
+                .join('\n');
+
+            const systemInstruction = `You are Muse's Voice Mode.
+CURRENT MODE: ${projectType}
+ASSETS: ${assets.length > 0 ? 'See list below.' : 'None.'}
+
+CAPABILITIES:
+1. 'appendEditor': Use this to ADD text to the story/document. Preferred for writing.
+2. 'updateEditor': Use this ONLY for rewrites/fixes where you replace the whole text.
+3. 'triggerChatSearch': Use for research.
+4. 'configureAudioStudio': FULL CONTROL of the Audio/TTS studio. Use this to generate speech/audio dramas.
+
+CONTEXT (Recent Conversation):
+${recentMsgs || "No previous context."}
+
+${assetDesc ? `\nASSET LIST:\n${assetDesc}` : ''}
+`;
 
             // Connect to Live API
             sessionPromiseRef.current = ai.live.connect({
@@ -123,7 +153,7 @@ export const useLive = ({ onUpdateEditor, onTriggerSearch, editorContent, assets
                     },
                     systemInstruction: systemInstruction,
                     tools: [
-                        { functionDeclarations: [updateEditorTool, triggerSearchTool] }
+                        { functionDeclarations: [updateEditorTool, appendEditorTool, triggerSearchTool, configureAudioStudioTool] }
                     ]
                 },
                 callbacks: {
@@ -132,11 +162,8 @@ export const useLive = ({ onUpdateEditor, onTriggerSearch, editorContent, assets
                         setIsActive(true);
                         setIsConnecting(false);
 
-                        // Start Input Stream
+                        // Start Audio Processing Pipeline
                         try {
-                            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                            mediaStreamRef.current = stream;
-                            
                             const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
                             audioContextRef.current = new AudioContextClass({ sampleRate: 16000 });
                             
@@ -147,7 +174,7 @@ export const useLive = ({ onUpdateEditor, onTriggerSearch, editorContent, assets
                             processor.onaudioprocess = (e) => {
                                 const inputData = e.inputBuffer.getChannelData(0);
                                 
-                                // Volume visualization
+                                // Volume visualization calculation
                                 let sum = 0;
                                 for (let i = 0; i < inputData.length; i++) {
                                     sum += inputData[i] * inputData[i];
@@ -163,7 +190,7 @@ export const useLive = ({ onUpdateEditor, onTriggerSearch, editorContent, assets
                             source.connect(processor);
                             processor.connect(audioContextRef.current.destination);
                         } catch (err) {
-                            console.error("Mic Error", err);
+                            console.error("Audio Pipeline Error", err);
                             stop();
                         }
                     },
@@ -197,10 +224,8 @@ export const useLive = ({ onUpdateEditor, onTriggerSearch, editorContent, assets
                                     console.log("Tool Call: updateEditor", args);
                                     if (args.newContent) {
                                         onUpdateEditor(args.newContent);
-                                        // Update our ref so we know the state
                                         currentEditorContentRef.current = args.newContent;
                                         
-                                        // Respond
                                         sessionPromiseRef.current?.then(session => {
                                             session.sendToolResponse({
                                                 functionResponses: [{
@@ -211,14 +236,30 @@ export const useLive = ({ onUpdateEditor, onTriggerSearch, editorContent, assets
                                             });
                                         });
                                     }
+                                } else if (fc.name === 'appendEditor') {
+                                    const args = fc.args as any;
+                                    console.log("Tool Call: appendEditor", args);
+                                    if (args.contentToAdd) {
+                                        onAppendEditor(args.contentToAdd);
+                                        // Update local ref locally to keep sync
+                                        currentEditorContentRef.current += "\n\n" + args.contentToAdd;
+
+                                        sessionPromiseRef.current?.then(session => {
+                                            session.sendToolResponse({
+                                                functionResponses: [{
+                                                    id: fc.id,
+                                                    name: fc.name,
+                                                    response: { result: "Content appended to editor." }
+                                                }]
+                                            });
+                                        });
+                                    }
                                 } else if (fc.name === 'triggerChatSearch') {
                                     const args = fc.args as any;
                                     console.log("Tool Call: triggerChatSearch", args);
                                     if (args.query) {
-                                        // Await the result from the chat interface's search
                                         const searchResult = await onTriggerSearch(args.query);
                                         
-                                        // Respond to the voice model with the ACTUAL result
                                         sessionPromiseRef.current?.then(session => {
                                             session.sendToolResponse({
                                                 functionResponses: [{
@@ -229,6 +270,46 @@ export const useLive = ({ onUpdateEditor, onTriggerSearch, editorContent, assets
                                             });
                                         });
                                     }
+                                } else if (fc.name === 'configureAudioStudio') {
+                                    const args = fc.args as any;
+                                    console.log("Tool Call: configureAudioStudio", args);
+                                    
+                                    const newState: Partial<TTSState> = {};
+                                    if (args.mode) newState.mode = args.mode;
+                                    if (args.script) newState.text = args.script;
+                                    if (args.singleVoice) newState.selectedSingleVoice = args.singleVoice;
+                                    
+                                    if (args.characters) {
+                                        newState.characters = args.characters.map((c: any) => ({
+                                            character: c.name,
+                                            voice: c.voice,
+                                            settings: {
+                                                description: c.settings?.description || '',
+                                                style: c.settings?.style || '',
+                                                pacing: c.settings?.pacing || '',
+                                                accent: c.settings?.accent || ''
+                                            },
+                                            isExpanded: true,
+                                            autoSetInput: c.settings?.description || '',
+                                            isAutoSetting: false
+                                        }));
+                                    }
+                                    
+                                    if (args.autoGenerate) {
+                                        newState.autoGenerateTrigger = true;
+                                    }
+
+                                    onConfigureTTS(newState);
+
+                                    sessionPromiseRef.current?.then(session => {
+                                        session.sendToolResponse({
+                                            functionResponses: [{
+                                                id: fc.id,
+                                                name: fc.name,
+                                                response: { result: "Audio Studio configured and generation started." }
+                                            }]
+                                        });
+                                    });
                                 }
                             }
                         }
@@ -239,7 +320,9 @@ export const useLive = ({ onUpdateEditor, onTriggerSearch, editorContent, assets
                     },
                     onerror: (err) => {
                         console.error("Live Session Error", err);
-                        stop();
+                        setIsConnecting(false);
+                        setIsActive(false);
+                        stop(); 
                     }
                 }
             });
@@ -247,8 +330,9 @@ export const useLive = ({ onUpdateEditor, onTriggerSearch, editorContent, assets
         } catch (error) {
             console.error("Connection Error", error);
             setIsConnecting(false);
+            alert("Failed to connect to AI Voice Service.");
         }
-    }, [isActive, isConnecting, stop, assets, projectType, onUpdateEditor, onTriggerSearch]);
+    }, [isActive, isConnecting, stop, assets, projectType, onUpdateEditor, onAppendEditor, onTriggerSearch, onConfigureTTS, chatHistory]);
 
     return {
         isActive,

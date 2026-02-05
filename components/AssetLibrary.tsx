@@ -56,7 +56,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ assets, onUpload, onAddLink
                 type="file" 
                 ref={fileInputRef} 
                 className="hidden" 
-                accept="image/*,video/*,application/pdf" 
+                accept="image/*,video/*,application/pdf,audio/*" 
                 multiple 
                 onChange={handleFileChange}
             />
@@ -100,6 +100,15 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ assets, onUpload, onAddLink
                             <span className="text-[10px] break-words line-clamp-2">{asset.name}</span>
                         </div>
                     )}
+                    {asset.type === 'audio' && (
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-gray-800 text-purple-400 p-2 text-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 mb-2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+                            </svg>
+                            <span className="text-[10px] break-words line-clamp-2">{asset.name}</span>
+                            <audio src={asset.url} controls className="w-full h-6 mt-2 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </div>
+                    )}
                     {asset.type === 'link' && (
                         <div className="w-full h-full flex flex-col items-center justify-center bg-gray-800 text-muse-400 p-2 text-center">
                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8 mb-2">
@@ -109,7 +118,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ assets, onUpload, onAddLink
                         </div>
                     )}
                     
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-2">
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-2 pointer-events-none group-hover:pointer-events-auto">
                         <p className="text-white text-[10px] truncate mb-1">{asset.name}</p>
                         <div className="flex gap-2 justify-end">
                             <button 
