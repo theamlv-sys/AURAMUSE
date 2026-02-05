@@ -1,0 +1,8 @@
+{
+  "name": "Muse - The Ultimate Creative Writing Assistant",
+  "description": "A world-class AI writing companion for books, screenplays, YouTube scripts, and more. Features multimodal analysis, storyboard generation, and prompt-to-video capabilities.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera"
+  ]
+}
