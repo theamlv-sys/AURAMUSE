@@ -1,309 +1,227 @@
 import React, { useState, useEffect } from 'react';
 import { SubscriptionTier, TIERS } from '../types';
+import { supabase } from '../services/supabaseClient';
 
 interface LandingPageProps {
-  onSelectTier: (tier: SubscriptionTier) => void;
+    onSelectTier: (tier: SubscriptionTier) => void;
 }
 
 const LandingPage: React.FC<LandingPageProps> = ({ onSelectTier }) => {
-  const [stage, setStage] = useState<'writing' | 'login' | 'pricing'>('writing');
-  const [accessCode, setAccessCode] = useState('');
-  const [error, setError] = useState('');
-  const [isFadingOut, setIsFadingOut] = useState(false);
+    const [stage, setStage] = useState<'writing' | 'login' | 'pricing'>('writing');
+    const [error, setError] = useState('');
+    const [isFadingOut, setIsFadingOut] = useState(false);
 
-  // Animation sequence
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setStage('login');
-    }, 3500); // 3.5s writing duration
-    return () => clearTimeout(timer);
-  }, []);
+    // Animation sequence & Session Check
+    useEffect(() => {
+        const checkSession = async () => {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session) {
+                setStage('pricing');
+                return;
+            }
+            // Only do animation if NOT logged in
+            const timer = setTimeout(() => {
+                setStage('login');
+            }, 3500);
+            return () => clearTimeout(timer);
+        };
 
-  const handleLogin = (e: React.FormEvent) => {
-      e.preventDefault();
-      if (accessCode === '1111') {
-          setIsFadingOut(true);
-          setTimeout(() => {
-              setStage('pricing');
-              setIsFadingOut(false);
-          }, 800);
-      } else {
-          setError('Access Denied');
-          setAccessCode('');
-          setTimeout(() => setError(''), 2000);
-      }
-  };
+        checkSession();
+    }, []);
 
-  return (
-    <div className="fixed inset-0 bg-black z-[100] flex flex-col items-center justify-center overflow-hidden font-sans text-white">
-      
-      {/* ------------------- BACKGROUND VIDEO LAYER ------------------- */}
-      <div className="absolute inset-0 z-0">
-          <video 
-              autoPlay 
-              muted 
-              loop 
-              playsInline 
-              className="w-full h-full object-cover opacity-100"
-              src="https://assets.mixkit.co/videos/preview/mixkit-hands-typing-on-a-vintage-typewriter-2747-large.mp4"
-          />
-          {/* Lighter Dark Overlay for Visibility */}
-          <div className="absolute inset-0 bg-black/50" />
-          {/* Subtle Radial Vignette for Focus */}
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,#000_100%)] opacity-70" />
-      </div>
-      
-      {/* ------------------- SCENE 1 & BACKGROUND: WRITING/LOGO ------------------- */}
-      {/* Moves up slightly during login to make room for the form below */}
-      <div 
-        className={`absolute inset-0 flex items-center justify-center transition-all duration-1000 z-10 ${
-            stage === 'pricing' ? 'opacity-0 scale-150 pointer-events-none' : 
-            stage === 'login' ? 'opacity-90 blur-0 scale-90 -translate-y-16' : 
-            'opacity-100 blur-0 scale-100'
-        }`}
-      >
-        <div className="relative w-[300px] h-[200px] flex items-center justify-center">
-          
-          {/* SVG LOGO PATH */}
-          <svg width="400" height="200" viewBox="0 0 400 200" className="z-10 overflow-visible">
-            <defs>
-              <linearGradient id="gold-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                <stop offset="0%" stopColor="#f59e0b" />
-                <stop offset="50%" stopColor="#fbbf24" />
-                <stop offset="100%" stopColor="#d97706" />
-              </linearGradient>
-              <filter id="glow">
-                <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-                <feMerge>
-                    <feMergeNode in="coloredBlur"/>
-                    <feMergeNode in="SourceGraphic"/>
-                </feMerge>
-              </filter>
-            </defs>
-            <text 
-              x="50%" 
-              y="50%" 
-              dominantBaseline="middle" 
-              textAnchor="middle" 
-              fontSize="100" 
-              fontFamily="Serif" 
-              fontWeight="bold"
-              fill="transparent"
-              stroke="url(#gold-gradient)"
-              strokeWidth="2"
-              className="draw-text tracking-widest"
-              filter="url(#glow)"
+    const handleGoogleLogin = async () => {
+        const { error } = await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+                redirectTo: window.location.origin
+            }
+        });
+        if (error) setError(error.message);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black z-[100] flex flex-col items-center justify-center overflow-hidden font-sans text-white">
+
+            {/* ------------------- BACKGROUND VIDEO LAYER ------------------- */}
+            <div className={`absolute inset-0 z-0 transition-opacity duration-1000 ${stage === 'pricing' ? 'opacity-0' : 'opacity-100'} overflow-hidden`}>
+                <video
+                    autoPlay
+                    muted
+                    playsInline
+                    className="w-full h-full object-cover animate-slow-zoom"
+                    src="/veo31-e2145206-a707-4d81-b3b7-80cbb48a1045.mp4#t=1"
+                    onEnded={(e) => {
+                        e.currentTarget.currentTime = 1;
+                        e.currentTarget.play();
+                    }}
+                />
+                <div className="absolute inset-0 bg-black/80" />
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,#000_100%)] opacity-70" />
+            </div>
+
+            {/* ------------------- SCENE 1 & BACKGROUND: WRITING/LOGO ------------------- */}
+            <div
+                className={`absolute inset-0 flex items-center justify-center transition-all duration-1000 z-10 ${stage === 'pricing' ? 'opacity-0 scale-150 pointer-events-none' :
+                    stage === 'login' ? 'opacity-90 blur-0 scale-90 -translate-y-32' :
+                        'opacity-100 blur-0 scale-100'
+                    }`}
             >
-              MUSE
-            </text>
-          </svg>
+                <div className="relative w-[400px] h-[300px] flex flex-col items-center justify-center perspective-1000">
 
-          {/* 3D PENCIL COMPONENT (Fades out when writing is done so it doesn't block the view) */}
-          <div className={`pencil-container ${stage !== 'writing' ? 'opacity-0' : 'opacity-100'} transition-opacity duration-500`}>
-             <div className="pencil">
-                <div className="pencil-point"></div>
-                <div className="pencil-cone"></div>
-                <div className="pencil-body"></div>
-                <div className="pencil-eraser"></div>
-             </div>
-          </div>
+                    <div className="relative z-10 flex gap-4 font-serif font-bold text-8xl tracking-[0.2em]" style={{ transformStyle: 'preserve-3d', transform: 'rotateX(10deg)' }}>
+                        {['M', 'U', 'S', 'E'].map((letter, i) => (
+                            <div key={i} className="relative group">
+                                <span className="absolute inset-0 text-black/50 blur-md transform translate-z-[-20px] letter-anim" style={{ animationDelay: `${0.5 + i * 0.7}s` }}>{letter}</span>
+                                <span className="absolute inset-0 text-amber-900/80 transform translate-z-[-10px] letter-anim" style={{ animationDelay: `${0.5 + i * 0.7}s` }}>{letter}</span>
+                                <span className="relative text-transparent bg-clip-text bg-gradient-to-b from-amber-100 via-amber-400 to-amber-700 drop-shadow-[0_0_15px_rgba(245,158,11,0.5)] letter-anim" style={{
+                                    animationDelay: `${0.5 + i * 0.7}s`,
+                                    WebkitTextStroke: '1px rgba(255,255,255,0.2)'
+                                }}>
+                                    {letter}
+                                </span>
+                                <span className="absolute inset-0 text-white/30 mask-image-text letter-anim" style={{ animationDelay: `${0.5 + i * 0.7}s` }}>{letter}</span>
+                            </div>
+                        ))}
+                    </div>
 
-        </div>
-      </div>
+                    <div className="mt-8 opacity-0 animate-[fade-in-up_1s_ease-out_forwards]" style={{ animationDelay: '3.8s' }}>
+                        <p className="text-[10px] md:text-xs font-sans tracking-[0.4em] text-amber-100/60 uppercase">
+                            Powered by <span className="text-amber-400 font-semibold glow-text">Auradomo</span>
+                        </p>
+                    </div>
 
-      {/* ------------------- SCENE 2: LOGIN GATE ------------------- */}
-      {/* Positioned slightly below center (mt-32) to sit under the lifted logo */}
-      {stage === 'login' && (
-          <div className={`z-20 mt-32 w-64 transition-all duration-1000 transform ${isFadingOut ? 'opacity-0 scale-95 translate-y-[20px]' : 'opacity-100 scale-100 translate-y-0'}`}>
-              <div className="bg-black/30 backdrop-blur-md border border-white/10 p-6 rounded-2xl shadow-2xl shadow-black text-center">
-                  <p className="text-gray-400 text-[10px] uppercase tracking-[0.3em] mb-4">Identify</p>
+                    <div className={`pencil-container ${stage !== 'writing' ? 'opacity-0' : 'opacity-100'} transition-opacity duration-500`}>
+                        <div className="pencil">
+                            <div className="pencil-point"></div>
+                            <div className="pencil-cone"></div>
+                            <div className="pencil-body"></div>
+                            <div className="pencil-eraser"></div>
+                        </div>
+                    </div>
 
-                  <form onSubmit={handleLogin} className="space-y-4">
-                      <div className="relative group">
-                          <input 
-                              type="password" 
-                              value={accessCode}
-                              onChange={(e) => setAccessCode(e.target.value)}
-                              placeholder="CODE"
-                              className="w-full bg-transparent border-b border-gray-600 focus:border-amber-500 px-2 py-2 text-center text-sm text-white tracking-[0.5em] focus:outline-none transition-all placeholder:text-gray-700 placeholder:tracking-normal placeholder:text-xs"
-                              autoFocus
-                          />
-                      </div>
-                      
-                      {error && <div className="text-red-400 text-[9px] font-bold tracking-widest animate-pulse mt-2">{error}</div>}
+                </div>
+            </div>
 
-                      <button 
-                          type="submit"
-                          className="w-full mt-2 bg-white/5 hover:bg-white/10 text-gray-300 text-[10px] font-medium py-2 rounded transition-all uppercase tracking-widest border border-white/5 hover:border-white/20"
-                      >
-                          Enter
-                      </button>
-                  </form>
-              </div>
-          </div>
-      )}
+            {/* ------------------- SCENE 2: LOGIN GATE ------------------- */}
+            {stage === 'login' && (
+                <div className={`absolute top-[60%] left-1/2 -translate-x-1/2 z-20 w-64 transition-all duration-1000 transform ${isFadingOut ? 'opacity-0 scale-95 translate-y-[20px]' : 'opacity-100 scale-100 translate-y-0'}`}>
+                    <div className="bg-black/30 backdrop-blur-md border border-white/10 p-8 rounded-2xl shadow-2xl shadow-black text-center">
+                        <p className="text-gray-400 text-[10px] uppercase tracking-[0.3em] mb-6">Welcome Back</p>
 
-      {/* ------------------- SCENE 3: PRICING TIERS ------------------- */}
-      <div 
-        className={`relative z-20 w-full max-w-7xl px-4 transition-all duration-1000 transform ${stage === 'pricing' && !isFadingOut ? 'opacity-100 translate-y-0 scale-100 blur-0' : 'opacity-0 translate-y-20 scale-95 pointer-events-none'}`}
-      >
-        <div className="text-center mb-16">
-            <h1 className="text-6xl md:text-7xl font-serif font-bold text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-400 mb-6 tracking-tight drop-shadow-2xl">
-              Choose Your Engine
-            </h1>
-            <p className="text-xl text-gray-400 max-w-2xl mx-auto font-light leading-relaxed">
-              Unlock the world's most advanced AI creative suite.
-              <br/><span className="text-amber-500/80">Select a plan to initialize your workspace.</span>
-            </p>
-        </div>
+                        {error && <div className="text-red-400 text-[9px] font-bold tracking-widest animate-pulse mb-4">{error}</div>}
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pb-12">
-            {/* Scribe */}
-            <TierCard 
-                tier="SCRIBE" 
-                price={TIERS.SCRIBE.price} 
-                name={TIERS.SCRIBE.name}
-                description="For novelists & writers."
-                features={['Unlimited AI Writing', 'Story Bible Context', '20 Images/mo', 'Basic Audio']}
-                onSelect={() => onSelectTier('SCRIBE')}
-                delay={100}
-            />
+                        <button
+                            onClick={handleGoogleLogin}
+                            className="w-full flex items-center justify-center gap-3 bg-white text-black py-4 rounded-xl font-bold text-xs hover:bg-gray-100 transition-all shadow-lg active:scale-95 border-b-4 border-gray-300"
+                        >
+                            <svg className="w-5 h-5" viewBox="0 0 24 24">
+                                <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-1 .67-2.28 1.07-3.71 1.07-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" />
+                                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                            </svg>
+                            Sign in with Google
+                        </button>
+                    </div>
+                </div>
+            )}
 
-            {/* Auteur (Featured) */}
-            <TierCard 
-                tier="AUTEUR" 
-                price={TIERS.AUTEUR.price} 
-                name={TIERS.AUTEUR.name}
-                description="For visual storytellers."
-                features={['Everything in Scribe', '100 Images/mo', '5 Veo Videos/mo', 'Ensemble Cast Audio', 'Advanced Voice Mode']}
-                featured
-                onSelect={() => onSelectTier('AUTEUR')}
-                delay={200}
-            />
-
-            {/* Showrunner */}
-            <TierCard 
-                tier="SHOWRUNNER" 
-                price={TIERS.SHOWRUNNER.price} 
-                name={TIERS.SHOWRUNNER.name}
-                description="For production power."
-                features={['Unlimited Everything', '500 Images/mo', '25 Veo Videos/mo', 'Priority Generation', 'Commercial License']}
-                onSelect={() => onSelectTier('SHOWRUNNER')}
-                delay={300}
-            />
-        </div>
-        
-        <div className="text-center animate-fade-in" style={{ animationDelay: '1s' }}>
-            <button 
-                onClick={() => onSelectTier('FREE')}
-                className="text-gray-400 hover:text-white text-xs uppercase tracking-[0.2em] transition-colors border-b border-transparent hover:border-white pb-1"
+            {/* ------------------- SCENE 3: PRICING TIERS ------------------- */}
+            <div
+                className={`relative z-20 w-full max-w-7xl px-4 transition-all duration-1000 transform ${stage === 'pricing' && !isFadingOut ? 'opacity-100 translate-y-0 scale-100 blur-0' : 'opacity-0 translate-y-20 scale-95 pointer-events-none'}`}
             >
-                Continue as Visitor (Restricted Access)
-            </button>
-        </div>
-      </div>
+                <div className="text-center mb-16">
+                    <h1 className="text-6xl md:text-7xl font-serif font-bold text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-400 mb-6 tracking-tight drop-shadow-2xl">
+                        Choose Your Engine
+                    </h1>
+                    <p className="text-xl text-gray-400 max-w-2xl mx-auto font-light leading-relaxed">
+                        Unlock the world's most advanced AI creative suite.
+                        <br /><span className="text-amber-500/80">Select a plan to initialize your workspace.</span>
+                    </p>
+                </div>
 
-      <style>{`
-        /* --- WRITING ANIMATION --- */
-        .draw-text {
-            stroke-dasharray: 500;
-            stroke-dashoffset: 500;
-            animation: draw 3s ease-in-out forwards;
-        }
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pb-12">
+                    <TierCard
+                        tier="SCRIBE"
+                        price={TIERS.SCRIBE.price}
+                        name={TIERS.SCRIBE.name}
+                        description="For novelists & writers."
+                        features={['Unlimited AI Writing', 'Story Bible Context', '20 Images/mo', 'Basic Audio (1k chars/gen)']}
+                        onSelect={() => onSelectTier('SCRIBE')}
+                        delay={100}
+                    />
 
-        @keyframes draw {
-            0% { stroke-dashoffset: 500; }
-            100% { stroke-dashoffset: 0; }
-        }
+                    <TierCard
+                        tier="AUTEUR"
+                        price={TIERS.AUTEUR.price}
+                        name={TIERS.AUTEUR.name}
+                        description="For visual storytellers."
+                        features={['Everything in Scribe', '50 Images/mo', '3 Veo 3.1 Videos/mo', '20m Advanced Voice Mode', 'Advanced Audio (5k chars/gen)']}
+                        featured
+                        onSelect={() => onSelectTier('AUTEUR')}
+                        delay={200}
+                    />
 
-        /* --- 3D PENCIL CSS (Standard Size) --- */
-        .pencil-container {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 0;
-            height: 0;
-            /* Move pencil along path roughly */
-            animation: write-path 3s ease-in-out forwards;
-        }
+                    <TierCard
+                        tier="SHOWRUNNER"
+                        price={TIERS.SHOWRUNNER.price}
+                        name={TIERS.SHOWRUNNER.name}
+                        description="For production power."
+                        features={['Everything in Auteur', '200 Images/mo', '10 Veo 3.1 Videos/mo', '100m Voice Mode', 'Studio Pro (15k chars/gen)']}
+                        onSelect={() => onSelectTier('SHOWRUNNER')}
+                        delay={300}
+                    />
+                </div>
 
-        .pencil {
-            position: absolute;
-            top: -120px;
-            left: -12px;
-            width: 24px;
-            height: 160px;
-            transform-style: preserve-3d;
-            transform: rotateZ(30deg) rotateX(20deg);
-        }
+                <div className="text-center animate-fade-in" style={{ animationDelay: '1s' }}>
+                    <button
+                        onClick={() => onSelectTier('FREE')}
+                        className="text-gray-400 hover:text-white text-xs uppercase tracking-[0.2em] transition-colors border-b border-transparent hover:border-white pb-1"
+                    >
+                        Continue as Visitor (Restricted Access)
+                    </button>
+                </div>
+            </div>
 
-        .pencil-body {
-            position: absolute;
-            width: 100%;
-            height: 70%;
-            background: linear-gradient(90deg, #d97706, #fbbf24, #d97706);
-            top: 0;
-            border-radius: 2px;
-            box-shadow: 2px 5px 5px rgba(0,0,0,0.3);
+            <style>{`
+        .perspective-1000 { perspective: 1000px; }
+        .letter-anim { opacity: 0; animation: letter-reveal 0.1s forwards; }
+        @keyframes letter-reveal { to { opacity: 1; } }
+        .pencil-container { position: absolute; top: 50%; left: 50%; width: 0; height: 0; z-index: 50; animation: write-sim 3.5s linear forwards; }
+        @keyframes write-sim {
+            0% { transform: translate(-150px, 0px); opacity: 0; }
+            10% { transform: translate(-150px, 0px); opacity: 1; }
+            20% { transform: translate(-125px, -20px); }
+            30% { transform: translate(-100px, 10px); }
+            33% { transform: translate(-60px, 10px); } 
+            40% { transform: translate(-60px, -20px); }
+            50% { transform: translate(-20px, 10px); }
+            53% { transform: translate(20px, 10px); }
+            60% { transform: translate(40px, -20px); }
+            70% { transform: translate(60px, 10px); }
+            73% { transform: translate(100px, 10px); }
+            80% { transform: translate(100px, -20px); }
+            90% { transform: translate(140px, 10px); opacity: 1; }
+            100% { transform: translate(200px, 50px); opacity: 0; }
         }
-
-        .pencil-cone {
-            position: absolute;
-            top: 70%;
-            width: 0;
-            height: 0;
-            border-left: 12px solid transparent;
-            border-right: 12px solid transparent;
-            border-top: 35px solid #fde68a;
-        }
-
-        .pencil-point {
-            position: absolute;
-            top: 91%;
-            left: 8px;
-            width: 0;
-            height: 0;
-            border-left: 4px solid transparent;
-            border-right: 4px solid transparent;
-            border-top: 12px solid #1f2937;
-        }
-
-        .pencil-eraser {
-            position: absolute;
-            top: -25px;
-            width: 100%;
-            height: 25px;
-            background: #f87171;
-            border-bottom: 5px solid #d1d5db;
-            border-radius: 4px 4px 0 0;
-        }
-
-        /* Adjusted path for smaller text */
-        @keyframes write-path {
-            0% { transform: translate(-180px, 0px); opacity: 0; }
-            10% { transform: translate(-180px, 0px); opacity: 1; }
-            25% { transform: translate(-90px, -25px); }
-            50% { transform: translate(0px, 15px); }
-            75% { transform: translate(90px, -25px); }
-            90% { transform: translate(180px, 0px); opacity: 1; }
-            100% { transform: translate(250px, -60px); opacity: 0; }
-        }
-
-        @keyframes fade-in {
-            0% { opacity: 0; }
-            100% { opacity: 1; }
-        }
-        .animate-fade-in {
-            animation: fade-in 1s ease-out forwards;
-            opacity: 0;
-        }
+        .pencil { position: absolute; top: -120px; left: -12px; width: 24px; height: 160px; transform-style: preserve-3d; transform: rotateZ(20deg) rotateX(20deg); }
+        .pencil-body { position: absolute; width: 100%; height: 70%; background: linear-gradient(90deg, #d97706, #fbbf24, #d97706); top: 0; border-radius: 2px; box-shadow: 5px 5px 10px rgba(0,0,0,0.5); }
+        .pencil-cone { position: absolute; top: 70%; width: 0; height: 0; border-left: 12px solid transparent; border-right: 12px solid transparent; border-top: 35px solid #fde68a; }
+        .pencil-point { position: absolute; top: 91%; left: 8px; width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 12px solid #1f2937; }
+        .pencil-eraser { position: absolute; top: -25px; width: 100%; height: 25px; background: #f87171; border-bottom: 5px solid #d1d5db; border-radius: 4px 4px 0 0; }
+        @keyframes fade-in { 0% { opacity: 0; } 100% { opacity: 1; } }
+        .animate-fade-in { animation: fade-in 1s ease-out forwards; opacity: 0; }
+        @keyframes fade-in-up { 0% { opacity: 0; transform: translateY(10px); } 100% { opacity: 1; transform: translateY(0); } }
+        .glow-text { text-shadow: 0 0 10px rgba(251, 191, 36, 0.5); }
+        .animate-slow-zoom { animation: slow-zoom 15s ease-in-out alternate infinite; }
+        @keyframes slow-zoom { 0% { transform: scale(1); } 100% { transform: scale(1.15); } }
       `}</style>
-    </div>
-  );
+        </div>
+    );
 };
 
 const TierCard = ({ tier, price, name, description, features, featured, onSelect, delay }: any) => (
-    <div 
+    <div
         className={`relative flex flex-col p-8 rounded-3xl cursor-pointer transition-all duration-500 transform hover:scale-105 animate-fade-in ${featured ? 'bg-gradient-to-b from-gray-800/80 to-gray-900/90 border-2 border-amber-500/50 shadow-[0_0_50px_rgba(245,158,11,0.15)] backdrop-blur-sm' : 'bg-white/5 border border-white/10 hover:bg-white/10 backdrop-blur-sm'}`}
         style={{ animationDelay: `${delay}ms` }}
     >
@@ -318,7 +236,6 @@ const TierCard = ({ tier, price, name, description, features, featured, onSelect
             <span className="text-sm text-gray-500 ml-1 font-medium">/mo</span>
         </div>
         <p className="text-sm text-gray-400 mb-8 font-light">{description}</p>
-        
         <div className="space-y-4 mb-8 flex-1">
             {features.map((feat: string, i: number) => (
                 <div key={i} className="flex items-center gap-3 text-sm text-gray-300">
@@ -327,8 +244,7 @@ const TierCard = ({ tier, price, name, description, features, featured, onSelect
                 </div>
             ))}
         </div>
-
-        <button 
+        <button
             onClick={onSelect}
             className={`w-full py-4 rounded-xl font-bold text-xs uppercase tracking-[0.15em] transition-all duration-300 ${featured ? 'bg-amber-500 hover:bg-amber-400 text-black shadow-lg shadow-amber-500/20' : 'bg-white text-black hover:bg-gray-200 shadow-lg'}`}
         >

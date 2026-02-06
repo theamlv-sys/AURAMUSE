@@ -19,7 +19,7 @@ export const useLive = ({ onUpdateEditor, onAppendEditor, onTriggerSearch, onCon
     const [isActive, setIsActive] = useState(false);
     const [isConnecting, setIsConnecting] = useState(false);
     const [volume, setVolume] = useState(0);
-    
+
     // Refs for audio handling to avoid stale closures in callbacks
     const audioContextRef = useRef<AudioContext | null>(null);
     const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -34,7 +34,7 @@ export const useLive = ({ onUpdateEditor, onAppendEditor, onTriggerSearch, onCon
     useEffect(() => {
         currentEditorContentRef.current = editorContent;
     }, [editorContent]);
-    
+
     useEffect(() => {
         chatHistoryRef.current = chatHistory;
     }, [chatHistory]);
@@ -66,18 +66,18 @@ export const useLive = ({ onUpdateEditor, onAppendEditor, onTriggerSearch, onCon
 
         // Close Session
         if (sessionPromiseRef.current) {
-             sessionPromiseRef.current.then(session => {
-                 try {
-                     session.close();
-                 } catch(e) { console.error("Error closing session", e); }
-             });
-             sessionPromiseRef.current = null;
+            sessionPromiseRef.current.then(session => {
+                try {
+                    session.close();
+                } catch (e) { console.error("Error closing session", e); }
+            });
+            sessionPromiseRef.current = null;
         }
     }, []);
 
     const start = useCallback(async () => {
         if (isActive || isConnecting) return;
-        
+
         // 1. Check for Hardware/Browser Support before doing anything
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             alert("Microphone access is not supported in this browser or context (requires HTTPS).");
@@ -106,8 +106,8 @@ export const useLive = ({ onUpdateEditor, onAppendEditor, onTriggerSearch, onCon
 
             mediaStreamRef.current = stream;
 
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            
+            const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GOOGLE_GENAI_API_KEY });
+
             // Setup Output Audio
             const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
             outputAudioContextRef.current = new AudioContextClass({ sampleRate: 24000 });
@@ -115,8 +115,8 @@ export const useLive = ({ onUpdateEditor, onAppendEditor, onTriggerSearch, onCon
 
             // Prepare System Instruction
             const assetDesc = assets.map(a => {
-                if(a.type === 'link') return `- Link: ${a.url}`;
-                if(a.type === 'pdf') return `- PDF File: ${a.name}`;
+                if (a.type === 'link') return `- Link: ${a.url}`;
+                if (a.type === 'pdf') return `- PDF File: ${a.name}`;
                 return `- ${a.name} (${a.type})`;
             }).join('\n');
 
@@ -166,14 +166,14 @@ ${assetDesc ? `\nASSET LIST:\n${assetDesc}` : ''}
                         try {
                             const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
                             audioContextRef.current = new AudioContextClass({ sampleRate: 16000 });
-                            
+
                             const source = audioContextRef.current.createMediaStreamSource(stream);
                             const processor = audioContextRef.current.createScriptProcessor(4096, 1, 1);
                             processorRef.current = processor;
 
                             processor.onaudioprocess = (e) => {
                                 const inputData = e.inputBuffer.getChannelData(0);
-                                
+
                                 // Volume visualization calculation
                                 let sum = 0;
                                 for (let i = 0; i < inputData.length; i++) {
@@ -198,22 +198,22 @@ ${assetDesc ? `\nASSET LIST:\n${assetDesc}` : ''}
                         // Handle Audio Output
                         const audioData = msg.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
                         if (audioData && outputAudioContextRef.current) {
-                             const ctx = outputAudioContextRef.current;
-                             const bytes = base64ToUint8Array(audioData);
-                             try {
-                                 const audioBuffer = await decodeAudioData(bytes, ctx, 24000);
-                                 
-                                 const source = ctx.createBufferSource();
-                                 source.buffer = audioBuffer;
-                                 source.connect(ctx.destination);
-                                 
-                                 const currentTime = ctx.currentTime;
-                                 const startTime = Math.max(currentTime, nextStartTimeRef.current);
-                                 source.start(startTime);
-                                 nextStartTimeRef.current = startTime + audioBuffer.duration;
-                             } catch (e) {
-                                 console.error("Decoding error", e);
-                             }
+                            const ctx = outputAudioContextRef.current;
+                            const bytes = base64ToUint8Array(audioData);
+                            try {
+                                const audioBuffer = await decodeAudioData(bytes, ctx, 24000);
+
+                                const source = ctx.createBufferSource();
+                                source.buffer = audioBuffer;
+                                source.connect(ctx.destination);
+
+                                const currentTime = ctx.currentTime;
+                                const startTime = Math.max(currentTime, nextStartTimeRef.current);
+                                source.start(startTime);
+                                nextStartTimeRef.current = startTime + audioBuffer.duration;
+                            } catch (e) {
+                                console.error("Decoding error", e);
+                            }
                         }
 
                         // Handle Tool Calls
@@ -225,7 +225,7 @@ ${assetDesc ? `\nASSET LIST:\n${assetDesc}` : ''}
                                     if (args.newContent) {
                                         onUpdateEditor(args.newContent);
                                         currentEditorContentRef.current = args.newContent;
-                                        
+
                                         sessionPromiseRef.current?.then(session => {
                                             session.sendToolResponse({
                                                 functionResponses: [{
@@ -259,7 +259,7 @@ ${assetDesc ? `\nASSET LIST:\n${assetDesc}` : ''}
                                     console.log("Tool Call: triggerChatSearch", args);
                                     if (args.query) {
                                         const searchResult = await onTriggerSearch(args.query);
-                                        
+
                                         sessionPromiseRef.current?.then(session => {
                                             session.sendToolResponse({
                                                 functionResponses: [{
@@ -273,12 +273,12 @@ ${assetDesc ? `\nASSET LIST:\n${assetDesc}` : ''}
                                 } else if (fc.name === 'configureAudioStudio') {
                                     const args = fc.args as any;
                                     console.log("Tool Call: configureAudioStudio", args);
-                                    
+
                                     const newState: Partial<TTSState> = {};
                                     if (args.mode) newState.mode = args.mode;
                                     if (args.script) newState.text = args.script;
                                     if (args.singleVoice) newState.selectedSingleVoice = args.singleVoice;
-                                    
+
                                     if (args.characters) {
                                         newState.characters = args.characters.map((c: any) => ({
                                             character: c.name,
@@ -294,7 +294,7 @@ ${assetDesc ? `\nASSET LIST:\n${assetDesc}` : ''}
                                             isAutoSetting: false
                                         }));
                                     }
-                                    
+
                                     if (args.autoGenerate) {
                                         newState.autoGenerateTrigger = true;
                                     }
@@ -322,7 +322,7 @@ ${assetDesc ? `\nASSET LIST:\n${assetDesc}` : ''}
                         console.error("Live Session Error", err);
                         setIsConnecting(false);
                         setIsActive(false);
-                        stop(); 
+                        stop();
                     }
                 }
             });
