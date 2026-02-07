@@ -16,6 +16,7 @@ import { Session } from '@supabase/supabase-js';
 const App: React.FC = () => {
     // --- CORE STATE ---
     const [hasAccess, setHasAccess] = useState(false);
+    const [isInitializing, setIsInitializing] = useState(true); // New Loading State
     const [session, setSession] = useState<Session | null>(null);
     const [theme, setTheme] = useState<'dark' | 'light'>('dark'); // New Theme State
     const [viewMode, setViewMode] = useState<ViewMode>('HOME');
@@ -87,25 +88,21 @@ const App: React.FC = () => {
     });
 
     // Load Data and Auth Session on Mount
+    // Load Data and Auth Session on Mount
     useEffect(() => {
-        // Auth Session Listener
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            setSession(session);
-        });
+        let mounted = true;
 
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            setSession(session);
-            if (!session) setHasAccess(false);
-        });
-
-        const initData = async () => {
+        const loadUserData = async (currentSession: Session) => {
             try {
+                // If session exists, load data
                 const [projects, assets, bible, usage] = await Promise.all([
                     persistenceService.loadProjects(),
                     persistenceService.loadAssets(),
                     persistenceService.loadBible(),
                     persistenceService.loadUsage()
                 ]);
+
+                if (!mounted) return;
 
                 if (projects.length > 0) setSavedProjects(projects);
                 else setSavedProjects([]);
@@ -119,21 +116,49 @@ const App: React.FC = () => {
                 if (usage) {
                     setUserTier(usage.tier);
                     setUsage(usage.usage);
-                    // AUTO-GRANT ACCESS ONLY TO PAID MEMBERS
+
                     if (usage.tier !== 'FREE') {
                         setHasAccess(true);
+                    } else {
+                        setHasAccess(false);
                     }
+                } else {
+                    setUserTier('FREE');
+                    setHasAccess(false);
                 }
+
             } catch (err) {
                 console.error('Failed to load data from Supabase:', err);
+                // On error, do not auto-grant access to be safe
+                setHasAccess(false);
+            } finally {
+                if (mounted) setIsInitializing(false);
             }
         };
 
-        if (session) {
-            initData();
-        }
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            if (!mounted) return;
+            setSession(session);
 
-        // Handle Stripe Redirection Success
+            if (session) {
+                // User is logged in (or just finished redirect logic)
+                loadUserData(session);
+            } else {
+                // User is not logged in / is guest
+                // Only stop initializing if we are sure (INITIAL_SESSION check is implied by onAuthStateChange firing)
+                setHasAccess(false);
+                setIsInitializing(false);
+            }
+        });
+
+        return () => {
+            mounted = false;
+            subscription.unsubscribe();
+        };
+    }, []);
+
+    // Handle Stripe Redirection Success
+    useEffect(() => {
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('session_id')) {
             alert('Payment Successful! Your workspace is being upgraded. It may take a few seconds for your new tier to activate.');
@@ -142,9 +167,7 @@ const App: React.FC = () => {
             url.searchParams.delete('session_id');
             window.history.replaceState({}, '', url);
         }
-
-        return () => subscription.unsubscribe();
-    }, [session]);
+    }, []);
 
     // Sync Usage to Supabase when it changes
     useEffect(() => {
@@ -443,6 +466,11 @@ const App: React.FC = () => {
 
     // --- RENDER FLOW ---
 
+    // 0. Initializing
+    if (isInitializing) {
+        return <div className="fixed inset-0 bg-black z-50 flex items-center justify-center text-white">Loading Universe...</div>;
+    }
+
     // 1. Landing Page (Subscription Gate)
     if (!hasAccess) {
         return <LandingPage onSelectTier={handleTierSelection} />;
@@ -459,6 +487,7 @@ const App: React.FC = () => {
                 savedProjects={savedProjects}
                 usage={usage}
                 userTier={userTier}
+                user={session?.user}
                 assets={assets}
                 onUpload={handleFileUpload}
                 onAddLink={handleAddLink}
@@ -469,6 +498,7 @@ const App: React.FC = () => {
                 onDeleteProject={handleDeleteProject}
                 theme={theme}
                 setTheme={setTheme}
+                onLogout={handleLogout}
             />
         );
     }
@@ -532,9 +562,9 @@ const App: React.FC = () => {
             </div>
 
             {/* Main Content Area */}
-            <div className="flex-1 flex overflow-hidden">
+            <div className="flex-1 flex overflow-hidden relative">
                 {/* Editor */}
-                <div className={`flex-1 transition-all duration-300 ${showRightPanel ? 'mr-0' : 'mr-0'}`}>
+                <div className="flex-1 w-full h-full overflow-hidden">
                     <Editor
                         content={content}
                         onChange={setContent}
@@ -550,8 +580,26 @@ const App: React.FC = () => {
                     />
                 </div>
 
-                {/* Right Panel */}
-                <div className={`${showRightPanel ? 'w-[450px]' : 'w-0'} transition-all duration-300 ease-in-out border-l ${theme === 'dark' ? 'border-gray-800 bg-gray-900' : 'border-gray-200 bg-white'} flex flex-col`}>
+                {/* Right Panel - Mobile Overlay / Desktop Side Panel */}
+                <div
+                    className={`
+                        fixed inset-0 z-40 md:static md:z-0
+                        transition-all duration-300 ease-in-out 
+                        border-l ${theme === 'dark' ? 'border-gray-800 bg-gray-900' : 'border-gray-200 bg-white'} 
+                        flex flex-col
+                        ${showRightPanel ? 'translate-x-0 w-full md:w-[450px]' : 'translate-x-full md:translate-x-0 md:w-0'}
+                    `}
+                >
+                    {/* Mobile Close Button */}
+                    <button
+                        onClick={() => setShowRightPanel(false)}
+                        className="md:hidden absolute top-4 right-4 z-50 p-2 bg-black/20 rounded-full text-white"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                    </button>
+
                     {activeTab === 'chat' && (
                         <ChatInterface
                             projectType={projectType}

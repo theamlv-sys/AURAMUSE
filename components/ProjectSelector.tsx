@@ -17,6 +17,8 @@ interface ProjectSelectorProps {
   setTheme: (theme: 'dark' | 'light') => void;
   usage: UsageStats;
   userTier: SubscriptionTier;
+  user?: any; // Added user prop
+  onLogout: () => void;
 }
 
 // --- ICONS (Inline) ---
@@ -96,12 +98,18 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
   theme,
   setTheme,
   usage,
-  userTier
+  userTier,
+  user,
+  onLogout
 }) => {
   const [activeCategory, setActiveCategory] = useState<keyof typeof CATEGORIES>('NARRATIVE');
   const [settingsTab, setSettingsTab] = useState<'APPEARANCE' | 'BILLING'>('APPEARANCE');
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
+
+  // Calculate Dynamic Stats
+  const totalWords = savedProjects.reduce((acc, p) => acc + (p.content || '').split(/\s+/).length, 0);
+  const firstName = user?.user_metadata?.full_name?.split(' ')[0] || user?.email?.split('@')[0] || 'Creator';
 
   // Helper for dynamic classes
   const isDark = theme === 'dark';
@@ -116,14 +124,21 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
     <div className={`flex h-screen ${bgColor} ${textColor} font-sans selection:bg-muse-500/30 transition-colors duration-500`}>
 
       {/* --- SIDEBAR --- */}
-      <div className={`flex-shrink-0 ${sidebarColor} border-r ${borderColor} transition-all duration-500 ease-spring ${isSidebarOpen ? 'w-64' : 'w-20'}`}>
+      <div className={`fixed inset-y-0 left-0 z-50 md:static flex-shrink-0 ${sidebarColor} border-r ${borderColor} transition-all duration-500 ease-spring ${isSidebarOpen ? 'w-64 shadow-2xl md:shadow-none' : 'w-0 md:w-20 -translate-x-full md:translate-x-0'}`}>
         <div className="flex flex-col h-full">
           {/* Logo Area */}
-          <div className={`h-20 flex items-center justify-center border-b ${borderColor}`}>
+          <div className={`h-20 flex items-center justify-between px-6 border-b ${borderColor}`}>
             {isSidebarOpen ? (
-              <h1 className="text-2xl font-serif font-bold tracking-tight bg-gradient-to-r from-muse-200 to-muse-600 bg-clip-text text-transparent">MUSE</h1>
+              <>
+                <h1 className="text-2xl font-serif font-bold tracking-tight bg-gradient-to-r from-muse-200 to-muse-600 bg-clip-text text-transparent">MUSE</h1>
+                <button onClick={() => setSidebarOpen(false)} className="md:hidden text-gray-500">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </>
             ) : (
-              <span className="text-2xl font-serif font-bold text-muse-500">M</span>
+              <span className="text-2xl font-serif font-bold text-muse-500 mx-auto">M</span>
             )}
           </div>
 
@@ -131,12 +146,13 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
           <div className={`p-4 border-b ${borderColor}`}>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-gradient-to-br from-muse-500 to-purple-600 p-[1px]">
-                <div className={`w-full h-full rounded-full ${sidebarColor} flex items-center justify-center text-xs font-bold ${textColor}`}>JJ</div>
+                {/* Use Google Avatar if available, else fallback */}
+                <img src={user?.user_metadata?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=" + firstName} alt="User" className={`w-full h-full rounded-full ${sidebarColor} object-cover`} />
               </div>
               {isSidebarOpen && (
                 <div className="overflow-hidden">
-                  <div className={`text-sm font-bold ${textColor} truncate`}>John Jones</div>
-                  <div className="text-[10px] text-muse-400 uppercase tracking-wider font-bold">Showrunner</div>
+                  <div className={`text-sm font-bold ${textColor} truncate`}>{user?.user_metadata?.full_name || firstName}</div>
+                  <div className="text-[10px] text-muse-400 uppercase tracking-wider font-bold">{userTier}</div>
                 </div>
               )}
             </div>
@@ -180,6 +196,18 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
               isSidebarOpen={isSidebarOpen}
               theme={theme}
             />
+            <div className="pt-2 mt-2 border-t border-gray-200/50 dark:border-white/10">
+              <button
+                onClick={onLogout}
+                className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all border border-transparent text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10`}
+                title="Sign Out"
+              >
+                <div className="w-5 h-5 flex-shrink-0">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" x2="9" y1="12" y2="12" /></svg>
+                </div>
+                {isSidebarOpen && <span className="text-sm font-medium whitespace-nowrap overflow-hidden transition-all">Log Out</span>}
+              </button>
+            </div>
             <button onClick={() => setSidebarOpen(!isSidebarOpen)} className={`w-full p-2 flex items-center justify-center ${subTextColor} hover:${textColor} transition-colors`}>
               {isSidebarOpen ? <ChevronLeftIcon /> : <ChevronRightIcon />}
             </button>
@@ -198,19 +226,31 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
         )}
 
         {/* Header */}
-        <header className={`h-20 flex justify-between items-center px-8 border-b ${borderColor} ${isDark ? 'backdrop-blur-sm' : 'bg-white/50 backdrop-blur-sm'} z-10`}>
-          <div>
-            <h2 className={`text-xl ${textColor} font-medium`}>
-              {view === 'HOME' && "Good Evening, John."}
-              {view === 'PROJECTS' && "Recent Projects"}
-              {view === 'ASSETS' && "Asset Library"}
-              {view === 'SETTINGS' && "Settings"}
-            </h2>
-            <p className={`text-xs ${subTextColor}`}>
-              {view === 'HOME' && "Ready to create your next masterpiece?"}
-              {view === 'PROJECTS' && "Pick up where you left off."}
-              {view === 'ASSETS' && "Manage your multimedia."}
-            </p>
+        <header className={`h-20 flex justify-between items-center px-4 md:px-8 border-b ${borderColor} ${isDark ? 'backdrop-blur-sm' : 'bg-white/50 backdrop-blur-sm'} z-10`}>
+          <div className="flex items-center gap-4">
+            {/* Mobile Menu Toggle */}
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="md:hidden p-2 -ml-2 text-gray-500 hover:text-white"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+              </svg>
+            </button>
+
+            <div>
+              <h2 className={`text-xl ${textColor} font-medium`}>
+                {view === 'HOME' && `Good Evening, ${firstName}.`}
+                {view === 'PROJECTS' && "Recent Projects"}
+                {view === 'ASSETS' && "Asset Library"}
+                {view === 'SETTINGS' && "Settings"}
+              </h2>
+              <p className={`text-xs ${subTextColor} hidden md:block`}>
+                {view === 'HOME' && "Ready to create your next masterpiece?"}
+                {view === 'PROJECTS' && "Pick up where you left off."}
+                {view === 'ASSETS' && "Manage your multimedia."}
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-4">
             <div className={`px-4 py-1.5 rounded-full ${isDark ? 'bg-[#1a1a20] border-[#2a2a30]' : 'bg-white border-gray-200'} border text-xs text-gray-400 flex items-center gap-2 shadow-sm`}>
@@ -227,14 +267,14 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
           {view === 'HOME' && (
             <>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-                <StatCard label="Words Written" value="24,592" trend="+12%" theme={theme} />
+                <StatCard label="Words Written" value={totalWords.toLocaleString()} trend="+12%" theme={theme} />
                 <StatCard label="Projects Created" value={savedProjects.length.toString()} trend="+3" theme={theme} />
                 <StatCard label="Generation Time" value="4.2s" trend="-0.5s" positive theme={theme} />
               </div>
 
               <div className="mb-6 flex items-end justify-between">
                 <h3 className={`text-2xl font-bold ${textColor} tracking-tight`}>The Studio</h3>
-                <div className={`flex ${isDark ? 'bg-[#1a1a20]' : 'bg-gray-100'} p-1 rounded-lg`}>
+                <div className={`flex flex-wrap gap-2 ${isDark ? 'bg-[#1a1a20]' : 'bg-gray-100'} p-1 rounded-lg`}>
                   {Object.keys(CATEGORIES).map((key) => {
                     const cat = CATEGORIES[key as keyof typeof CATEGORIES];
                     const isActive = activeCategory === key;
@@ -242,7 +282,7 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
                       <button
                         key={key}
                         onClick={() => setActiveCategory(key as any)}
-                        className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all duration-300 ${isActive ? 'bg-muse-600 text-white shadow-lg shadow-muse-900/20' : `${subTextColor} hover:${textColor}`}`}
+                        className={`flex-1 px-4 py-1.5 text-xs font-medium rounded-md transition-all duration-300 whitespace-nowrap ${isActive ? 'bg-muse-600 text-white shadow-lg shadow-muse-900/20' : `${subTextColor} hover:${textColor}`}`}
                       >
                         {cat.label}
                       </button>
