@@ -26,5 +26,13 @@ export const stripeService = {
 
         alert('Invalid tier selected.');
         return null;
+    },
+
+    async createCustomerPortalSession(): Promise<void> {
+        // TODO: Replace with your actual Stripe Customer Portal link
+        // You can find this in Stripe Dashboard -> Settings -> Customer Portal
+        const portalUrl = "https://billing.stripe.com/p/login/test_...";
+        alert("Redirecting to Subscription Management...");
+        window.open(portalUrl, '_blank');
     }
 };

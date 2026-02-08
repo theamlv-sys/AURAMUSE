@@ -95,12 +95,15 @@ const App: React.FC = () => {
         const loadUserData = async (currentSession: Session) => {
             try {
                 // If session exists, load data
-                const [projects, assets, bible, usage] = await Promise.all([
+                const [projects, assets, bible, usage, versions] = await Promise.all([
                     persistenceService.loadProjects(),
                     persistenceService.loadAssets(),
                     persistenceService.loadBible(),
-                    persistenceService.loadUsage()
+                    persistenceService.loadUsage(),
+                    persistenceService.loadVersions()
                 ]);
+
+                console.log("loadUserData results:", { projects, assets, bible, usage, versions });
 
                 if (!mounted) return;
 
@@ -112,6 +115,9 @@ const App: React.FC = () => {
 
                 if (bible.length > 0) setStoryBible(bible);
                 else setStoryBible([]);
+
+                if (versions.length > 0) setVersionHistory(versions);
+                else setVersionHistory([]);
 
                 if (usage) {
                     setUserTier(usage.tier);
@@ -178,8 +184,13 @@ const App: React.FC = () => {
 
     // Handle Entrance from Landing Page
     const handleTierSelection = async (tier: SubscriptionTier) => {
-        if (tier !== 'FREE' && session?.user) {
-            // Initiate Stripe Checkout for Paid Tiers
+        const tierLevels: Record<SubscriptionTier, number> = { 'FREE': 0, 'SCRIBE': 1, 'AUTEUR': 2, 'SHOWRUNNER': 3 };
+        const currentLevel = tierLevels[userTier];
+        const targetLevel = tierLevels[tier];
+
+        if (tier !== 'FREE' && session?.user && tier !== userTier) {
+            // Initiate Stripe Checkout for BOTH Upgrades and Downgrades
+            // User requested to use the "same pages" (Payment Links) for all subscription actions
             const checkoutUrl = await stripeService.createCheckoutSession(tier, session.user.id);
             if (checkoutUrl) {
                 window.location.href = checkoutUrl;
@@ -188,6 +199,7 @@ const App: React.FC = () => {
         }
 
         // If Visitor (FREE) or session missing, proceed to app (Visitor mode)
+        // OR if upgrading to FREE (which shouldn't happen logic-wise but fail-safe)
         setUserTier(tier);
         setHasAccess(true);
         const limits = TIERS[tier].limits;
@@ -235,11 +247,12 @@ const App: React.FC = () => {
         persistenceService.deleteProject(id);
     };
 
-    const handleSaveProject = () => {
+    const handleSaveProject = async () => {
         if (!projectType) return;
 
+        // 1. Create the project object
         const newProject: SavedProject = {
-            id: Date.now().toString(),
+            id: crypto.randomUUID(),
             title: title || 'Untitled Project',
             type: projectType,
             content: content,
@@ -247,18 +260,32 @@ const App: React.FC = () => {
             previewSnippet: content.slice(0, 80) + (content.length > 80 ? '...' : '')
         };
 
-        setSavedProjects(prev => {
-            const existsIndex = prev.findIndex(p => p.title === newProject.title && p.type === newProject.type);
-            if (existsIndex >= 0) {
-                const updated = [...prev];
-                updated[existsIndex] = { ...updated[existsIndex], ...newProject, id: updated[existsIndex].id };
-                persistenceService.saveProject(updated[existsIndex]);
-                return updated;
-            }
-            persistenceService.saveProject(newProject);
-            return [newProject, ...prev];
-        });
-        alert('Project Saved to Sidebar!');
+        try {
+            // 2. Optimistic Update (Update UI immediately)
+            let isUpdate = false;
+            setSavedProjects(prev => {
+                const existsIndex = prev.findIndex(p => p.title === newProject.title && p.type === newProject.type);
+                if (existsIndex >= 0) {
+                    isUpdate = true;
+                    const updated = [...prev];
+                    // Keep the original ID if updating
+                    newProject.id = updated[existsIndex].id;
+                    updated[existsIndex] = newProject;
+                    return updated;
+                }
+                return [newProject, ...prev];
+            });
+
+            // 3. Persist to Backend
+            console.log("Saving project to Supabase...", newProject);
+            await persistenceService.saveProject(newProject);
+            alert('Project Saved to Sidebar & Database!');
+
+        } catch (error: any) {
+            console.error("Failed to save project:", error);
+            alert(`Error saving project: ${error.message || "Unknown error"}`);
+            // Optional: Rollback state here if strict consistency is needed
+        }
     };
 
     const checkLimit = (type: 'video' | 'image' | 'voice' | 'ensemble' | 'bible' | 'audio', amount: number = 0): boolean => {
@@ -415,13 +442,14 @@ const App: React.FC = () => {
     const handleSnapshot = () => {
         if (!projectType) return;
         const snap: VersionSnapshot = {
-            id: Date.now().toString(),
+            id: crypto.randomUUID(),
             projectType: projectType,
             timestamp: Date.now(),
             content: content,
             description: `Snapshot ${versionHistory.filter(v => v.projectType === projectType).length + 1}`
         };
-        setVersionHistory(prev => [...prev, snap]);
+        setVersionHistory(prev => [snap, ...prev]); // Add to top
+        persistenceService.saveVersion(snap).catch(err => console.error("Failed to persist snapshot:", err));
     };
 
     const handleDeleteSnapshot = (id: string) => {
@@ -479,27 +507,36 @@ const App: React.FC = () => {
     // 2. Project Selector (Dashboard Hub)
     if (viewMode !== 'EDITOR') {
         return (
-            <ProjectSelector
-                view={viewMode}
-                onNavigate={handleNavigate}
-                onSelect={handleProjectSelect}
-                onLoadProject={handleLoadProject}
-                savedProjects={savedProjects}
-                usage={usage}
-                userTier={userTier}
-                user={session?.user}
-                assets={assets}
-                onUpload={handleFileUpload}
-                onAddLink={handleAddLink}
-                onDeleteAsset={(id) => {
-                    setAssets(prev => prev.filter(a => a.id !== id));
-                    persistenceService.deleteAsset(id);
-                }}
-                onDeleteProject={handleDeleteProject}
-                theme={theme}
-                setTheme={setTheme}
-                onLogout={handleLogout}
-            />
+            <>
+                <ProjectSelector
+                    view={viewMode}
+                    onNavigate={handleNavigate}
+                    onSelect={handleProjectSelect}
+                    onLoadProject={handleLoadProject}
+                    savedProjects={savedProjects}
+                    usage={usage}
+                    userTier={userTier}
+                    user={session?.user}
+                    assets={assets}
+                    onUpload={handleFileUpload}
+                    onAddLink={handleAddLink}
+                    onDeleteAsset={(id) => {
+                        setAssets(prev => prev.filter(a => a.id !== id));
+                        persistenceService.deleteAsset(id);
+                    }}
+                    onDeleteProject={handleDeleteProject}
+                    theme={theme}
+                    setTheme={setTheme}
+                    onLogout={handleLogout}
+                    onManageSubscription={() => setShowSubModal(true)}
+                />
+                <SubscriptionModal
+                    isOpen={showSubModal}
+                    onClose={() => setShowSubModal(false)}
+                    currentTier={userTier}
+                    onUpgrade={handleTierSelection}
+                />
+            </>
         );
     }
 
@@ -662,7 +699,16 @@ const App: React.FC = () => {
                     )}
                 </div>
             </div>
-        </div>
+
+
+            {/* GLOBAL MODALS */}
+            <SubscriptionModal
+                isOpen={showSubModal}
+                onClose={() => setShowSubModal(false)}
+                currentTier={userTier}
+                onUpgrade={handleTierSelection}
+            />
+        </div >
     );
 };
 

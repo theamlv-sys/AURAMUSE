@@ -19,6 +19,7 @@ interface ProjectSelectorProps {
   userTier: SubscriptionTier;
   user?: any; // Added user prop
   onLogout: () => void;
+  onManageSubscription: () => void;
 }
 
 // --- ICONS (Inline) ---
@@ -100,7 +101,8 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
   usage,
   userTier,
   user,
-  onLogout
+  onLogout,
+  onManageSubscription
 }) => {
   const [activeCategory, setActiveCategory] = useState<keyof typeof CATEGORIES>('NARRATIVE');
   const [settingsTab, setSettingsTab] = useState<'APPEARANCE' | 'BILLING'>('APPEARANCE');
@@ -196,6 +198,18 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
               isSidebarOpen={isSidebarOpen}
               theme={theme}
             />
+
+            {/* Scale Production Button - Sidebar */}
+            <button
+              onClick={onManageSubscription}
+              className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all border ${isDark ? 'bg-muse-600/20 border-muse-500/30 text-muse-400 hover:bg-muse-600/30 hover:border-muse-500/50' : 'bg-muse-50 border-muse-200 text-muse-600 hover:bg-muse-100'} group`}
+              title="Scale Your Production"
+            >
+              <div className={`w-5 h-5 flex-shrink-0 flex items-center justify-center ${isDark ? 'text-muse-500' : 'text-muse-600'}`}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
+              </div>
+              {isSidebarOpen && <span className="text-sm font-bold whitespace-nowrap overflow-hidden transition-all group-hover:scale-105 origin-left">Scale Production</span>}
+            </button>
             <div className="pt-2 mt-2 border-t border-gray-200/50 dark:border-white/10">
               <button
                 onClick={onLogout}
@@ -269,7 +283,7 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
                 <StatCard label="Words Written" value={totalWords.toLocaleString()} trend="+12%" theme={theme} />
                 <StatCard label="Projects Created" value={savedProjects.length.toString()} trend="+3" theme={theme} />
-                <StatCard label="Generation Time" value="4.2s" trend="-0.5s" positive theme={theme} />
+                <StatCard label="Assets Stored" value={assets.length.toString()} trend="Library" positive theme={theme} />
               </div>
 
               <div className="mb-6 flex items-end justify-between">

@@ -1,11 +1,57 @@
 import { supabase } from './supabaseClient';
-import { SavedProject, Asset, StoryBibleEntry, SubscriptionTier, UsageStats } from '../types';
+import { SavedProject, Asset, StoryBibleEntry, SubscriptionTier, UsageStats, VersionSnapshot } from '../types';
 
 export const persistenceService = {
+    // --- VERSIONS ---
+    async saveVersion(version: VersionSnapshot) {
+        const { data: userData } = await supabase.auth.getUser();
+        if (!userData.user) return null;
+
+        const { data, error } = await supabase
+            .from('project_versions')
+            .upsert({
+                id: version.id,
+                project_type: version.projectType,
+                content: version.content,
+                description: version.description,
+                timestamp: version.timestamp,
+                user_id: userData.user.id
+            })
+            .select();
+
+        if (error) {
+            console.error("Error saving version:", error);
+            throw error;
+        }
+        return data;
+    },
+
+    async loadVersions(): Promise<VersionSnapshot[]> {
+        const { data, error } = await supabase
+            .from('project_versions')
+            .select('*')
+            .order('timestamp', { ascending: false });
+
+        if (error) {
+            console.error("Error loading versions:", error);
+            return [];
+        }
+        return data.map(v => ({
+            id: v.id,
+            projectType: v.project_type as any,
+            timestamp: v.timestamp,
+            content: v.content,
+            description: v.description
+        }));
+    },
+
     // --- PROJECTS ---
     async saveProject(project: SavedProject) {
         const { data: userData } = await supabase.auth.getUser();
-        if (!userData.user) return null;
+        if (!userData.user) {
+            console.error("Save failed: No authenticated user found.");
+            return null;
+        }
 
         const { data, error } = await supabase
             .from('projects')
@@ -19,7 +65,12 @@ export const persistenceService = {
                 user_id: userData.user.id
             })
             .select();
-        if (error) throw error;
+
+        if (error) {
+            console.error("Supabase Save Error:", error);
+            throw error;
+        }
+        console.log("Project saved successfully to Supabase:", data);
         return data;
     },
 

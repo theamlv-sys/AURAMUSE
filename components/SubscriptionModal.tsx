@@ -9,10 +9,52 @@ interface SubscriptionModalProps {
 }
 
 const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, currentTier, onUpgrade }) => {
+    const getButtonAction = (tier: SubscriptionTier) => {
+        const tierLevels: Record<SubscriptionTier, number> = { 'FREE': 0, 'SCRIBE': 1, 'AUTEUR': 2, 'SHOWRUNNER': 3 };
+        const currentLevel = tierLevels[currentTier];
+        const targetLevel = tierLevels[tier];
+
+        if (currentTier === tier) {
+            return (
+                <button
+                    disabled
+                    className="w-full py-3 rounded-xl font-bold text-sm bg-gray-800 text-gray-500 cursor-not-allowed"
+                >
+                    Current Plan
+                </button>
+            );
+        }
+
+        if (targetLevel > currentLevel) {
+            return (
+                <button
+                    onClick={() => onUpgrade(tier)}
+                    className="w-full py-3 rounded-xl font-bold text-sm bg-white text-black hover:bg-gray-200 active:scale-95 transition-all"
+                >
+                    Upgrade
+                </button>
+            );
+        }
+
+        // Downgrade Case
+        return (
+            <button
+                onClick={() => {
+                    if (confirm(`Are you sure you want to downgrade to ${tier}? You may lose access to advanced features and data.`)) {
+                        onUpgrade(tier); // This will be handled in App.tsx to redirect to Portal
+                    }
+                }}
+                className="w-full py-3 rounded-xl font-bold text-sm bg-gray-800 text-gray-300 hover:bg-red-900/30 hover:text-red-400 hover:border-red-500/50 border border-transparent transition-all"
+            >
+                Downgrade
+            </button>
+        );
+    };
+
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
             <div className="w-full max-w-6xl bg-gray-950 rounded-3xl border border-gray-800 overflow-hidden flex flex-col max-h-[95vh] shadow-[0_0_50px_rgba(14,165,233,0.15)]">
                 {/* Header */}
                 <div className="p-8 border-b border-white/5 flex justify-between items-center bg-gray-950/50">
@@ -42,13 +84,7 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
                                 <Feature text="Story Bible Mode" x />
                                 <Feature text="Ensemble Cast" x />
                             </div>
-                            <button
-                                onClick={() => onUpgrade('FREE')}
-                                disabled={currentTier === 'FREE'}
-                                className={`w-full py-3 rounded-xl font-bold text-sm transition-all ${currentTier === 'FREE' ? 'bg-gray-800 text-gray-500 cursor-not-allowed' : 'bg-gray-800 text-white hover:bg-gray-700 active:scale-95'}`}
-                            >
-                                {currentTier === 'FREE' ? 'Current' : 'Select Free'}
-                            </button>
+                            {getButtonAction('FREE')}
                         </div>
 
                         {/* SCRIBE TIER */}
@@ -63,13 +99,7 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
                                 <Feature text="Basic Audio (1k chars/gen)" check />
                                 <Feature text="Project Sidebar" check />
                             </div>
-                            <button
-                                onClick={() => onUpgrade('SCRIBE')}
-                                disabled={currentTier === 'SCRIBE'}
-                                className={`w-full py-3 rounded-xl font-bold text-sm transition-all ${currentTier === 'SCRIBE' ? 'bg-gray-800 text-gray-500 cursor-not-allowed' : 'bg-white text-black hover:bg-gray-200 active:scale-95'}`}
-                            >
-                                {currentTier === 'SCRIBE' ? 'Current' : 'Select Scribe'}
-                            </button>
+                            {getButtonAction('SCRIBE')}
                         </div>
 
                         {/* AUTEUR TIER (Recommended) */}
@@ -87,13 +117,7 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
                                 <Feature text="20m Advanced Voice Mode" check highlight />
                                 <Feature text="Advanced Audio (5k chars/gen)" check />
                             </div>
-                            <button
-                                onClick={() => onUpgrade('AUTEUR')}
-                                disabled={currentTier === 'AUTEUR'}
-                                className={`w-full py-3 rounded-xl font-bold text-sm transition-all ${currentTier === 'AUTEUR' ? 'bg-gray-800 text-gray-500 cursor-not-allowed' : 'bg-gradient-to-r from-muse-600 to-muse-400 text-white hover:shadow-lg hover:shadow-muse-500/30 active:scale-95'}`}
-                            >
-                                {currentTier === 'AUTEUR' ? 'Current' : 'Select Auteur'}
-                            </button>
+                            {getButtonAction('AUTEUR')}
                         </div>
 
                         {/* SHOWRUNNER TIER */}
@@ -109,13 +133,7 @@ const SubscriptionModal: React.FC<SubscriptionModalProps> = ({ isOpen, onClose, 
                                 <Feature text="Studio Pro (15k chars/gen)" check highlight />
                                 <Feature text="Priority Rendering Queue" check />
                             </div>
-                            <button
-                                onClick={() => onUpgrade('SHOWRUNNER')}
-                                disabled={currentTier === 'SHOWRUNNER'}
-                                className={`w-full py-3 rounded-xl font-bold text-sm transition-all ${currentTier === 'SHOWRUNNER' ? 'bg-gray-800 text-gray-500 cursor-not-allowed' : 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:shadow-lg hover:shadow-purple-500/30 active:scale-95'}`}
-                            >
-                                {currentTier === 'SHOWRUNNER' ? 'Current' : 'Select Showrunner'}
-                            </button>
+                            {getButtonAction('SHOWRUNNER')}
                         </div>
                     </div>
 
