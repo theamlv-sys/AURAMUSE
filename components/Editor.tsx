@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { marked } from 'marked';
 import { ProjectType, VersionSnapshot } from '../types';
+import EmailStudio from './EmailStudio';
 
 // Add type definition for html2pdf attached to window
 declare global {
@@ -28,6 +29,8 @@ const Editor: React.FC<EditorProps> = ({ content, onChange, title, onTitleChange
     const [showExportMenu, setShowExportMenu] = useState(false);
     const [isExportingPdf, setIsExportingPdf] = useState(false);
     const [showHistory, setShowHistory] = useState(false);
+    const [emailMode, setEmailMode] = useState<'DRAFT' | 'INBOX'>('INBOX');
+
 
     // Auto-snapshot every 5 minutes if content changes
     useEffect(() => {
@@ -177,6 +180,24 @@ const Editor: React.FC<EditorProps> = ({ content, onChange, title, onTitleChange
                     >
                         <span>↺</span> History
                     </button>
+
+                    {/* Email Toggle */}
+                    {projectType === ProjectType.EMAIL && (
+                        <div className="flex bg-gray-800/50 rounded-lg p-1 ml-4 border border-gray-700">
+                            <button
+                                onClick={() => setEmailMode('DRAFT')}
+                                className={`px-3 py-1 text-xs rounded-md transition-all ${emailMode === 'DRAFT' ? 'bg-muse-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                            >
+                                Draft
+                            </button>
+                            <button
+                                onClick={() => setEmailMode('INBOX')}
+                                className={`px-3 py-1 text-xs rounded-md transition-all ${emailMode === 'INBOX' ? 'bg-muse-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                            >
+                                Inbox
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 <div className="relative">
@@ -239,6 +260,14 @@ const Editor: React.FC<EditorProps> = ({ content, onChange, title, onTitleChange
                         style={isScreenplay ? { maxWidth: '800px', padding: '0 50px' } : {}}
                     />
                 </div>
+
+                {/* EMAIL STUDIO INTEGRATION */}
+                {projectType === ProjectType.EMAIL && emailMode === 'INBOX' && (
+                    <div className="absolute inset-0 z-20 bg-gray-900">
+                        <EmailStudio isDark={isDark} onClose={() => setEmailMode('DRAFT')} />
+                    </div>
+                )}
+
 
                 {/* Version History Sidebar */}
                 <div className={`absolute top-0 right-0 h-full w-80 ${isDark ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200'} border-l transition-transform duration-300 ${showHistory ? 'translate-x-0' : 'translate-x-full'} z-30 shadow-2xl`}>

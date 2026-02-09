@@ -7,6 +7,8 @@ import TTSStudio from './components/TTSStudio';
 import StoryBible from './components/StoryBible';
 import SubscriptionModal from './components/SubscriptionModal';
 import LandingPage from './components/LandingPage';
+import PrivacyPolicy from './components/PrivacyPolicy';
+import TermsOfService from './components/TermsOfService';
 import { ProjectType, Asset, TTSState, VoiceName, StoryBibleEntry, VersionSnapshot, SubscriptionTier, UsageStats, TIERS, SavedProject, ViewMode } from './types';
 import { persistenceService } from './services/persistenceService';
 import { supabase } from './services/supabaseClient';
@@ -74,6 +76,7 @@ const App: React.FC = () => {
     // --- CONTEXT STATE (Global Arrays, filtered in render) ---
     const [storyBible, setStoryBible] = useState<StoryBibleEntry[]>([]);
     const [versionHistory, setVersionHistory] = useState<VersionSnapshot[]>([]);
+    const [isGmailConnected, setIsGmailConnected] = useState(false); // New explicit state
 
     // --- TTS STATE ---
     const [ttsState, setTtsState] = useState<TTSState>({
@@ -87,7 +90,6 @@ const App: React.FC = () => {
         autoGenerateTrigger: false
     });
 
-    // Load Data and Auth Session on Mount
     // Load Data and Auth Session on Mount
     useEffect(() => {
         let mounted = true;
@@ -103,34 +105,53 @@ const App: React.FC = () => {
                     persistenceService.loadVersions()
                 ]);
 
-                console.log("loadUserData results:", { projects, assets, bible, usage, versions });
+                console.log("User Data Loaded");
 
                 if (!mounted) return;
 
-                if (projects.length > 0) setSavedProjects(projects);
-                else setSavedProjects([]);
+                if (mounted) {
+                    setSavedProjects(projects);
+                    setAssets(assets);
+                    setStoryBible(bible);
 
-                if (assets.length > 0) setAssets(assets);
-                else setAssets([]);
-
-                if (bible.length > 0) setStoryBible(bible);
-                else setStoryBible([]);
-
-                if (versions.length > 0) setVersionHistory(versions);
-                else setVersionHistory([]);
-
-                if (usage) {
-                    setUserTier(usage.tier);
-                    setUsage(usage.usage);
-
-                    if (usage.tier !== 'FREE') {
-                        setHasAccess(true);
+                    if (versions.length > 0) {
+                        // Filter duplicates to be safe, though DB should handle
+                        const uniqueVersions = versions.filter((v, i, self) =>
+                            i === self.findIndex((t) => t.id === v.id)
+                        );
+                        setVersionHistory(uniqueVersions);
                     } else {
+                        setVersionHistory([]);
+                    }
+
+                    if (usage) {
+                        setUserTier(usage.tier);
+                        // Merge cloud usage with local session usage if needed, or just overwrite
+                        // For now, we trust the cloud as source of truth for history
+                        setUsage(prev => ({ ...prev, ...usage.usage }));
+
+                        if (usage.tier !== 'FREE') {
+                            setHasAccess(true);
+                        } else {
+                            setHasAccess(false);
+                        }
+                    } else {
+                        setUserTier('FREE');
                         setHasAccess(false);
                     }
-                } else {
-                    setUserTier('FREE');
-                    setHasAccess(false);
+
+                    // CHECK GMAIL CONNECTION
+                    const isSessionActive = sessionStorage.getItem('muse_gmail_active') === 'true';
+                    if (currentSession.provider_token && isSessionActive) {
+                        const { gmailService } = await import('./services/gmailService');
+                        const isConnected = await gmailService.getProfile(currentSession.provider_token);
+                        setIsGmailConnected(isConnected);
+                        if (!isConnected) {
+                            sessionStorage.removeItem('muse_gmail_active');
+                        }
+                    } else {
+                        setIsGmailConnected(false);
+                    }
                 }
 
             } catch (err) {
@@ -214,6 +235,8 @@ const App: React.FC = () => {
 
     const handleLogout = async () => {
         await supabase.auth.signOut();
+        sessionStorage.removeItem('muse_gmail_active'); // Force disconnect Gmail
+        setIsGmailConnected(false);
         setHasAccess(false);
         setSession(null);
         setViewMode('HOME');
@@ -501,7 +524,21 @@ const App: React.FC = () => {
 
     // 1. Landing Page (Subscription Gate)
     if (!hasAccess) {
-        return <LandingPage onSelectTier={handleTierSelection} />;
+        if (viewMode === 'LEGAL_PRIVACY') {
+            return <PrivacyPolicy onBack={() => setViewMode('HOME')} theme={theme} />;
+        }
+        if (viewMode === 'LEGAL_TERMS') {
+            return <TermsOfService onBack={() => setViewMode('HOME')} theme={theme} />;
+        }
+        return <LandingPage onSelectTier={handleTierSelection} onNavigateLegal={(mode) => setViewMode(mode)} />;
+    }
+
+    // 1.5 Legal Pages (Authenticated)
+    if (viewMode === 'LEGAL_PRIVACY') {
+        return <PrivacyPolicy onBack={() => setViewMode('HOME')} theme={theme} />;
+    }
+    if (viewMode === 'LEGAL_TERMS') {
+        return <TermsOfService onBack={() => setViewMode('HOME')} theme={theme} />;
     }
 
     // 2. Project Selector (Dashboard Hub)
@@ -516,6 +553,7 @@ const App: React.FC = () => {
                     savedProjects={savedProjects}
                     usage={usage}
                     userTier={userTier}
+                    isGmailConnected={isGmailConnected}
                     user={session?.user}
                     assets={assets}
                     onUpload={handleFileUpload}
@@ -654,6 +692,7 @@ const App: React.FC = () => {
                             storyBible={currentStoryBible}
                             theme={theme}
                             userTier={userTier}
+                            gmailToken={session?.provider_token}
                         />
                     )}
                     {activeTab === 'bible' && (

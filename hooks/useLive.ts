@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality } from "@google/genai";
-import { updateEditorTool, appendEditorTool, triggerSearchTool, configureAudioStudioTool } from '../services/geminiService';
+import { updateEditorTool, appendEditorTool, triggerSearchTool, configureAudioStudioTool, listEmailsTool, sendEmailTool } from '../services/geminiService';
 import { createPcmBlob, decodeAudioData, base64ToUint8Array } from '../utils/audioUtils';
 import { Asset, ProjectType, Message, TTSState, TTSCharacter } from '../types';
+import { gmailService } from '../services/gmailService';
 
 interface UseLiveProps {
     onUpdateEditor: (newContent: string) => void;
@@ -13,9 +14,10 @@ interface UseLiveProps {
     assets: Asset[];
     projectType: ProjectType;
     chatHistory: Message[];
+    gmailToken?: string;
 }
 
-export const useLive = ({ onUpdateEditor, onAppendEditor, onTriggerSearch, onConfigureTTS, editorContent, assets, projectType, chatHistory }: UseLiveProps) => {
+export const useLive = ({ onUpdateEditor, onAppendEditor, onTriggerSearch, onConfigureTTS, editorContent, assets, projectType, chatHistory, gmailToken }: UseLiveProps) => {
     const [isActive, setIsActive] = useState(false);
     const [isConnecting, setIsConnecting] = useState(false);
     const [volume, setVolume] = useState(0);
@@ -136,6 +138,8 @@ CAPABILITIES:
 2. 'updateEditor': Use this ONLY for rewrites/fixes where you replace the whole text.
 3. 'triggerChatSearch': Use for research.
 4. 'configureAudioStudio': FULL CONTROL of the Audio/TTS studio. Use this to generate speech/audio dramas.
+5. 'listEmails': Access the user's Gmail inbox. Read emails to them.
+6. 'sendEmail': Send emails on their behalf. ALWAYS confirm the distinct content before sending.
 
 CONTEXT (Recent Conversation):
 ${recentMsgs || "No previous context."}
@@ -153,7 +157,7 @@ ${assetDesc ? `\nASSET LIST:\n${assetDesc}` : ''}
                     },
                     systemInstruction: systemInstruction,
                     tools: [
-                        { functionDeclarations: [updateEditorTool, appendEditorTool, triggerSearchTool, configureAudioStudioTool] }
+                        { functionDeclarations: [updateEditorTool, appendEditorTool, triggerSearchTool, configureAudioStudioTool, listEmailsTool, sendEmailTool] }
                     ]
                 },
                 callbacks: {
@@ -310,6 +314,86 @@ ${assetDesc ? `\nASSET LIST:\n${assetDesc}` : ''}
                                             }]
                                         });
                                     });
+                                } else if (fc.name === 'listEmails') {
+                                    const args = fc.args as any;
+                                    console.log("Tool Call: listEmails", args);
+
+                                    if (!gmailToken) {
+                                        sessionPromiseRef.current?.then(session => {
+                                            session.sendToolResponse({
+                                                functionResponses: [{
+                                                    id: fc.id,
+                                                    name: fc.name,
+                                                    response: { result: "Error: Gmail not connected. Ask the user to connect via the Dashboard." }
+                                                }]
+                                            });
+                                        });
+                                    } else {
+                                        gmailService.listMessages(gmailToken, args.count || 5)
+                                            .then(emails => {
+                                                sessionPromiseRef.current?.then(session => {
+                                                    session.sendToolResponse({
+                                                        functionResponses: [{
+                                                            id: fc.id,
+                                                            name: fc.name,
+                                                            response: { result: JSON.stringify(emails) }
+                                                        }]
+                                                    });
+                                                });
+                                            })
+                                            .catch(err => {
+                                                console.error("Gmail List Error", err);
+                                                sessionPromiseRef.current?.then(session => {
+                                                    session.sendToolResponse({
+                                                        functionResponses: [{
+                                                            id: fc.id,
+                                                            name: fc.name,
+                                                            response: { result: "Failed to fetch emails." }
+                                                        }]
+                                                    });
+                                                });
+                                            });
+                                    }
+                                } else if (fc.name === 'sendEmail') {
+                                    const args = fc.args as any;
+                                    console.log("Tool Call: sendEmail", args);
+
+                                    if (!gmailToken) {
+                                        sessionPromiseRef.current?.then(session => {
+                                            session.sendToolResponse({
+                                                functionResponses: [{
+                                                    id: fc.id,
+                                                    name: fc.name,
+                                                    response: { result: "Error: Gmail not connected." }
+                                                }]
+                                            });
+                                        });
+                                    } else {
+                                        gmailService.sendEmail(gmailToken, args.to, args.subject, args.body)
+                                            .then(() => {
+                                                sessionPromiseRef.current?.then(session => {
+                                                    session.sendToolResponse({
+                                                        functionResponses: [{
+                                                            id: fc.id,
+                                                            name: fc.name,
+                                                            response: { result: "Email sent successfully." }
+                                                        }]
+                                                    });
+                                                });
+                                            })
+                                            .catch(err => {
+                                                console.error("Gmail Send Error", err);
+                                                sessionPromiseRef.current?.then(session => {
+                                                    session.sendToolResponse({
+                                                        functionResponses: [{
+                                                            id: fc.id,
+                                                            name: fc.name,
+                                                            response: { result: "Failed to send email." }
+                                                        }]
+                                                    });
+                                                });
+                                            });
+                                    }
                                 }
                             }
                         }

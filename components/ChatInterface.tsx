@@ -18,11 +18,12 @@ interface ChatInterfaceProps {
   storyBible: StoryBibleEntry[];
   theme: 'dark' | 'light';
   userTier: SubscriptionTier;
+  gmailToken?: string;
 }
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({
   projectType, assets, onAddAsset, onUpdateContent, onReplaceContent,
-  editorContent, onConfigureTTS, checkLimit, trackUsage, storyBible, theme, userTier
+  editorContent, onConfigureTTS, checkLimit, trackUsage, storyBible, theme, userTier, gmailToken
 }) => {
   const [messages, setMessages] = useState<Message[]>([
     { role: 'model', content: `I'm Muse. I can see what you're writing. Ask me to rewrite sections, generate storyboards, or use the Voice Mode to talk with me directly.` }
@@ -52,7 +53,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     editorContent,
     assets,
     projectType,
-    chatHistory: messages
+    chatHistory: messages,
+    gmailToken
   });
 
   // Track voice time every minute

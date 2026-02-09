@@ -20,6 +20,7 @@ interface ProjectSelectorProps {
   user?: any; // Added user prop
   onLogout: () => void;
   onManageSubscription: () => void;
+  isGmailConnected?: boolean;
 }
 
 // --- ICONS (Inline) ---
@@ -102,12 +103,35 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
   userTier,
   user,
   onLogout,
-  onManageSubscription
+  onManageSubscription,
+  isGmailConnected
 }) => {
   const [activeCategory, setActiveCategory] = useState<keyof typeof CATEGORIES>('NARRATIVE');
   const [settingsTab, setSettingsTab] = useState<'APPEARANCE' | 'BILLING'>('APPEARANCE');
+  // Navigation State
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
+
+  // Profile Picture State
+  const [customAvatar, setCustomAvatar] = useState<string | null>(localStorage.getItem('muse_custom_avatar'));
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleAvatarClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const result = ev.target?.result as string;
+        setCustomAvatar(result);
+        localStorage.setItem('muse_custom_avatar', result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   // Calculate Dynamic Stats
   const totalWords = savedProjects.reduce((acc, p) => acc + (p.content || '').split(/\s+/).length, 0);
@@ -125,39 +149,54 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
   return (
     <div className={`flex h-screen ${bgColor} ${textColor} font-sans selection:bg-muse-500/30 transition-colors duration-500`}>
 
+      {/* Hidden File Input for Avatar */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleAvatarChange}
+        accept="image/*"
+        className="hidden"
+      />
+
       {/* --- SIDEBAR --- */}
       <div className={`fixed inset-y-0 left-0 z-50 md:static flex-shrink-0 ${sidebarColor} border-r ${borderColor} transition-all duration-500 ease-spring ${isSidebarOpen ? 'w-64 shadow-2xl md:shadow-none' : 'w-0 md:w-20 -translate-x-full md:translate-x-0'}`}>
         <div className="flex flex-col h-full">
           {/* Logo Area */}
+          {/* User Profile Header (Top) */}
           <div className={`h-20 flex items-center justify-between px-6 border-b ${borderColor}`}>
-            {isSidebarOpen ? (
-              <>
-                <h1 className="text-2xl font-serif font-bold tracking-tight bg-gradient-to-r from-muse-200 to-muse-600 bg-clip-text text-transparent">MUSE</h1>
-                <button onClick={() => setSidebarOpen(false)} className="md:hidden text-gray-500">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </>
-            ) : (
-              <span className="text-2xl font-serif font-bold text-muse-500 mx-auto">M</span>
-            )}
-          </div>
-
-          {/* User Profile Snippet */}
-          <div className={`p-4 border-b ${borderColor}`}>
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-muse-500 to-purple-600 p-[1px]">
-                {/* Use Google Avatar if available, else fallback */}
-                <img src={user?.user_metadata?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=" + firstName} alt="User" className={`w-full h-full rounded-full ${sidebarColor} object-cover`} />
+            <div className="flex items-center gap-3 w-full">
+              <div
+                onClick={handleAvatarClick}
+                className="w-10 h-10 rounded-full bg-gradient-to-br from-muse-500 to-purple-600 p-[1px] cursor-pointer hover:scale-105 transition-transform relative group flex-shrink-0"
+                title="Change Profile Picture"
+              >
+                {/* Use Custom Avatar -> Google Avatar -> Fallback */}
+                <img
+                  src={customAvatar || user?.user_metadata?.avatar_url || "https://api.dicebear.com/7.x/avataaars/svg?seed=" + firstName}
+                  alt="User"
+                  className={`w-full h-full rounded-full ${sidebarColor} object-cover`}
+                />
+                <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                </div>
               </div>
+
               {isSidebarOpen && (
-                <div className="overflow-hidden">
+                <div className="overflow-hidden flex-1 min-w-0 animate-fade-in">
                   <div className={`text-sm font-bold ${textColor} truncate`}>{user?.user_metadata?.full_name || firstName}</div>
                   <div className="text-[10px] text-muse-400 uppercase tracking-wider font-bold">{userTier}</div>
                 </div>
               )}
             </div>
+
+            {/* Mobile Close Button */}
+            {isSidebarOpen && (
+              <button onClick={() => setSidebarOpen(false)} className="md:hidden text-gray-500 ml-2 hover:text-white transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
           </div>
 
           {/* Nav Links */}
@@ -198,6 +237,8 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
               isSidebarOpen={isSidebarOpen}
               theme={theme}
             />
+
+            {/* Email Studio - Sidebar REMOVED */}
 
             {/* Scale Production Button - Sidebar */}
             <button
@@ -280,10 +321,67 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
           {/* VIEW: HOME */}
           {view === 'HOME' && (
             <>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
                 <StatCard label="Words Written" value={totalWords.toLocaleString()} trend="+12%" theme={theme} />
                 <StatCard label="Projects Created" value={savedProjects.length.toString()} trend="+3" theme={theme} />
                 <StatCard label="Assets Stored" value={assets.length.toString()} trend="Library" positive theme={theme} />
+
+                {/* Connect Gmail Actions */}
+                <div className={`p-6 rounded-2xl border ${isDark ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'} flex flex-col justify-center items-center text-center shadow-sm`}>
+                  <div className={`w-10 h-10 rounded-full ${isGmailConnected ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'} flex items-center justify-center mb-3`}>
+                    {isGmailConnected ? (
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    ) : (
+                      <MailIcon className="w-5 h-5" />
+                    )}
+                  </div>
+                  <h3 className={`font-bold text-sm ${isDark ? 'text-gray-200' : 'text-gray-900'}`}>
+                    {isGmailConnected ? 'Inbox Connected' : 'Executive Comms'}
+                  </h3>
+
+                  {isGmailConnected ? (
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-green-500 bg-green-500/10 px-3 py-1 rounded-full animate-pulse">
+                        Active
+                      </span>
+                    </div>
+                  ) : (
+                    userTier === 'SHOWRUNNER' ? (
+                      <button
+                        onClick={async () => {
+                          sessionStorage.setItem('muse_gmail_active', 'true');
+                          const { supabase } = await import('../services/supabaseClient');
+                          await supabase.auth.signInWithOAuth({
+                            provider: 'google',
+                            options: {
+                              redirectTo: window.location.origin,
+                              scopes: 'https://www.googleapis.com/auth/gmail.modify',
+                              queryParams: {
+                                access_type: 'offline',
+                                prompt: 'consent',
+                              },
+                            },
+                          });
+                        }}
+                        className="mt-2 text-xs font-bold text-blue-500 hover:text-blue-400 border border-blue-500/20 hover:bg-blue-500/10 px-4 py-1.5 rounded-full transition-all"
+                      >
+                        Connect Gmail
+                      </button>
+                    ) : (
+                      <button
+                        onClick={onManageSubscription}
+                        className={`mt-2 text-xs font-bold ${isDark ? 'text-gray-500 border-gray-700 hover:bg-gray-800' : 'text-gray-400 border-gray-200 hover:bg-gray-50'} border px-4 py-1.5 rounded-full flex items-center gap-1 transition-all`}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3 h-3">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+                        </svg>
+                        Locked (Showrunner)
+                      </button>
+                    )
+                  )}
+                </div>
               </div>
 
               <div className="mb-6 flex items-end justify-between">
@@ -385,6 +483,8 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
             </div>
           )}
 
+          {/* VIEW: EMAIL STUDIO REMOVED */}
+
           {/* VIEW: SETTINGS */}
           {view === 'SETTINGS' && (
             <div className="max-w-4xl animate-[fade-in-up_0.5s_ease-out] flex flex-col gap-6">
@@ -401,6 +501,12 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
                   className={`px-4 py-2 text-sm font-bold transition-all ${settingsTab === 'BILLING' ? 'text-muse-500 border-b-2 border-muse-500' : 'text-gray-500 hover:text-gray-300'}`}
                 >
                   Billing & Usage
+                </button>
+                <button
+                  onClick={() => setSettingsTab('LEGAL' as any)}
+                  className={`px-4 py-2 text-sm font-bold transition-all ${settingsTab === 'LEGAL' as any ? 'text-muse-500 border-b-2 border-muse-500' : 'text-gray-500 hover:text-gray-300'}`}
+                >
+                  Legal
                 </button>
               </div>
 
@@ -504,6 +610,35 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
                         ))
                       )}
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {/* LEGAL TAB */}
+              {settingsTab === 'LEGAL' as any && (
+                <div className={`${cardBg} border ${borderColor} rounded-xl p-6 shadow-sm`}>
+                  <h3 className={`text-lg font-bold ${textColor} mb-4`}>Legal & Compliance</h3>
+                  <div className="space-y-4">
+                    <button
+                      onClick={() => onNavigate('LEGAL_PRIVACY')}
+                      className={`w-full text-left p-4 rounded-lg border ${borderColor} hover:border-muse-500 hover:bg-muse-500/5 transition-all flex items-center justify-between group`}
+                    >
+                      <div>
+                        <div className={`font-bold ${textColor}`}>Privacy Policy</div>
+                        <div className={`text-xs ${subTextColor}`}>How we handle your data, restricted scopes, and AI usage.</div>
+                      </div>
+                      <ArrowRightIcon className="w-4 h-4 text-muse-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </button>
+                    <button
+                      onClick={() => onNavigate('LEGAL_TERMS')}
+                      className={`w-full text-left p-4 rounded-lg border ${borderColor} hover:border-muse-500 hover:bg-muse-500/5 transition-all flex items-center justify-between group`}
+                    >
+                      <div>
+                        <div className={`font-bold ${textColor}`}>Terms of Service</div>
+                        <div className={`text-xs ${subTextColor}`}>User agreements, liability, and acceptable use policy.</div>
+                      </div>
+                      <ArrowRightIcon className="w-4 h-4 text-muse-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </button>
                   </div>
                 </div>
               )}

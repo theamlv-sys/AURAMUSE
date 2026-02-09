@@ -119,6 +119,32 @@ export const configureAudioStudioTool: FunctionDeclaration = {
   }
 };
 
+export const listEmailsTool: FunctionDeclaration = {
+  name: "listEmails",
+  description: "Lists the user's recent emails from their Gmail inbox. Use this to find emails to read or reply to.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      count: { type: Type.NUMBER, description: "Number of emails to fetch (default 10)." },
+      query: { type: Type.STRING, description: "Search query for filtering emails (e.g. 'is:unread', 'from:boss')." }
+    }
+  }
+};
+
+export const sendEmailTool: FunctionDeclaration = {
+  name: "sendEmail",
+  description: "Sends an email via the user's Gmail account. Use this ONLY after the user has explicitly confirmed the content.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      to: { type: Type.STRING, description: "Recipient email address." },
+      subject: { type: Type.STRING, description: "Email subject line." },
+      body: { type: Type.STRING, description: "The full HTML or text body of the email." }
+    },
+    required: ["to", "subject", "body"]
+  }
+};
+
 export const generateWriting = async (
   prompt: string,
   projectType: ProjectType,
@@ -646,3 +672,45 @@ export const generateSpeech = async (
     throw e;
   }
 }
+// ----------------------
+// GMAIL AI FEATURES
+// ----------------------
+
+export const generateEmailDraft = async (
+  prompt: string,
+  history: { role: string; content: string }[] = []
+): Promise<string> => {
+  const ai = getAI();
+  const modelId = 'gemini-3-flash-preview';
+
+  const systemInstruction = `You are an elite Executive Communications Director.
+    Your goal is to write emails that sound 100% human, professional, and authentic.
+    
+    CRITICAL RULES:
+    1. NO "AI" LANGUAGE: Do not use words like "tapestry", "delve", "testament", "underscores", "landscape", "foster", "spearhead".
+    2. BE CONCISE: Executives don't read long emails. Get to the point.
+    3. TONE: Confident, warm, but direct.
+    4. FORMATTING: Use short paragraphs.
+    5. OUTPUT: Return ONLY the email body. Do not include "Subject:" lines or "Here is the draft" meta-text unless explicitly asked for a subject line.
+    `;
+
+  try {
+    const chat = ai.chats.create({
+      model: modelId,
+      config: {
+        systemInstruction: systemInstruction,
+      },
+      history: history.map(h => ({
+        role: h.role,
+        parts: [{ text: h.content }],
+      })),
+    });
+
+    const result = await chat.sendMessage({ message: [{ text: prompt }] });
+    return result.text || "Draft generation failed.";
+
+  } catch (error) {
+    console.error("Email Draft Error:", error);
+    return "Error generating draft.";
+  }
+};

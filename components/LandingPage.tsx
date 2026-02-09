@@ -4,9 +4,10 @@ import { supabase } from '../services/supabaseClient';
 
 interface LandingPageProps {
     onSelectTier: (tier: SubscriptionTier) => void;
+    onNavigateLegal?: (mode: 'LEGAL_PRIVACY' | 'LEGAL_TERMS') => void;
 }
 
-const LandingPage: React.FC<LandingPageProps> = ({ onSelectTier }) => {
+const LandingPage: React.FC<LandingPageProps> = ({ onSelectTier, onNavigateLegal }) => {
     const [stage, setStage] = useState<'writing' | 'login' | 'pricing'>('writing');
     const [error, setError] = useState('');
     const [isFadingOut, setIsFadingOut] = useState(false);
@@ -85,19 +86,15 @@ const LandingPage: React.FC<LandingPageProps> = ({ onSelectTier }) => {
             >
                 <div className="relative w-[400px] h-[300px] flex flex-col items-center justify-center perspective-1000">
 
-                    <div className="relative z-10 flex gap-4 font-serif font-bold text-8xl tracking-[0.2em]" style={{ transformStyle: 'preserve-3d', transform: 'rotateX(10deg)' }}>
+                    <div className="relative z-10 flex gap-4 animate-[fade-in-up_1s_ease-out_forwards]">
                         {['M', 'U', 'S', 'E'].map((letter, i) => (
-                            <div key={i} className="relative group">
-                                <span className="absolute inset-0 text-black/50 blur-md transform translate-z-[-20px] letter-anim" style={{ animationDelay: `${0.5 + i * 0.7}s` }}>{letter}</span>
-                                <span className="absolute inset-0 text-amber-900/80 transform translate-z-[-10px] letter-anim" style={{ animationDelay: `${0.5 + i * 0.7}s` }}>{letter}</span>
-                                <span className="relative text-transparent bg-clip-text bg-gradient-to-b from-amber-100 via-amber-400 to-amber-700 drop-shadow-[0_0_15px_rgba(245,158,11,0.5)] letter-anim" style={{
-                                    animationDelay: `${0.5 + i * 0.7}s`,
-                                    WebkitTextStroke: '1px rgba(255,255,255,0.2)'
-                                }}>
-                                    {letter}
-                                </span>
-                                <span className="absolute inset-0 text-white/30 mask-image-text letter-anim" style={{ animationDelay: `${0.5 + i * 0.7}s` }}>{letter}</span>
-                            </div>
+                            <span
+                                key={i}
+                                className="font-serif font-bold text-6xl md:text-9xl text-transparent bg-clip-text bg-gradient-to-br from-amber-300 via-amber-400 to-yellow-600 drop-shadow-2xl letter-anim"
+                                style={{ animationDelay: `${0.5 + i * 0.8}s` }}
+                            >
+                                {letter}
+                            </span>
                         ))}
                     </div>
 
@@ -192,6 +189,17 @@ const LandingPage: React.FC<LandingPageProps> = ({ onSelectTier }) => {
                     >
                         Continue as Visitor (Restricted Access)
                     </button>
+                </div>
+            </div>
+
+            {/* ------------------- FOOTER ------------------- */}
+            <div className={`fixed bottom-0 w-full p-4 flex justify-between items-center text-[10px] text-gray-500 z-50 transition-opacity duration-1000 ${stage === 'pricing' ? 'opacity-100' : 'opacity-0'}`}>
+                <div className="flex gap-4">
+                    <button onClick={() => onNavigateLegal?.('LEGAL_PRIVACY')} className="hover:text-amber-500 transition-colors uppercase tracking-widest">Privacy Policy</button>
+                    <button onClick={() => onNavigateLegal?.('LEGAL_TERMS')} className="hover:text-amber-500 transition-colors uppercase tracking-widest">Terms of Service</button>
+                </div>
+                <div>
+                    © 2026 AuraDomoMuse
                 </div>
             </div>
 
