@@ -21,7 +21,11 @@ interface ProjectSelectorProps {
   onLogout: () => void;
   onManageSubscription: () => void;
   isGmailConnected?: boolean;
+  onImportGoogleDoc?: (title: string, content: string) => void;
 }
+
+import { googleDriveService } from '../services/googleDriveService';
+import { supabase } from '../services/supabaseClient';
 
 // --- ICONS (Inline) ---
 const BookOpenIcon = (props: any) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" /></svg>;
@@ -49,6 +53,44 @@ const TrashIcon = (props: any) => <svg xmlns="http://www.w3.org/2000/svg" width=
 const WalletIcon = (props: any) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" /></svg>;
 const CreditCardIcon = (props: any) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><rect width="20" height="14" x="2" y="5" rx="2" /><line x1="2" x2="22" y1="10" y2="10" /></svg>;
 const ActivityIcon = (props: any) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg>;
+
+// --- SUB COMPONENTS ---
+const SidebarItem = ({ icon, label, active, onClick, isSidebarOpen, theme }: any) => {
+  const isDark = theme === 'dark';
+  const activeClass = isDark ? 'bg-muse-500/10 text-muse-400 border-muse-500/20' : 'bg-muse-50 text-muse-600 border-muse-200';
+  const inactiveClass = isDark ? 'text-gray-400 hover:bg-[#1a1a20] hover:text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900';
+
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all border border-transparent ${active ? activeClass + ' border' : inactiveClass}`}
+    >
+      <div className="w-5 h-5 flex-shrink-0">{icon}</div>
+      {isSidebarOpen && <span className="text-sm font-medium whitespace-nowrap overflow-hidden transition-all">{label}</span>}
+    </button>
+  );
+};
+
+const StatCard = ({ label, value, trend, positive, theme }: any) => {
+  const isDark = theme === 'dark';
+  const cardBg = isDark ? 'bg-[#0e0e12]' : 'bg-white';
+  const borderColor = isDark ? 'border-[#1f1f26]' : 'border-gray-200';
+  const textColor = isDark ? 'text-white' : 'text-gray-900';
+
+  return (
+    <div className={`${cardBg} border ${borderColor} rounded-xl p-5 relative overflow-hidden group hover:border-muse-500 transition-all shadow-sm`}>
+      <div className="relative z-10">
+        <div className="text-xs text-gray-500 uppercase tracking-wider mb-1 font-bold">{label}</div>
+        <div className={`text-3xl font-bold ${textColor} mb-2`}>{value}</div>
+        <div className={`text-xs font-medium inline-flex items-center gap-1 ${positive === false ? 'text-red-400' : 'text-green-500'}`}>
+          {positive === false ? <TrendingDownIcon className="w-3 h-3" /> : <TrendingUpIcon className="w-3 h-3" />}
+          {trend}
+        </div>
+      </div>
+      <div className="absolute -bottom-4 -right-4 w-24 h-24 bg-muse-500/5 rounded-full blur-2xl group-hover:bg-muse-500/10 transition-colors"></div>
+    </div>
+  );
+};
 
 // --- CATEGORY DEFINITIONS ---
 const CATEGORIES = {
@@ -104,13 +146,67 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
   user,
   onLogout,
   onManageSubscription,
-  isGmailConnected
+  isGmailConnected,
+  onImportGoogleDoc
 }) => {
   const [activeCategory, setActiveCategory] = useState<keyof typeof CATEGORIES>('NARRATIVE');
   const [settingsTab, setSettingsTab] = useState<'APPEARANCE' | 'BILLING'>('APPEARANCE');
   // Navigation State
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
+
+  // Google Drive State
+  const [showDrivePicker, setShowDrivePicker] = useState(false);
+  const [driveFiles, setDriveFiles] = useState<any[]>([]);
+  const [isLoadingDrive, setIsLoadingDrive] = useState(false);
+
+  const [driveAuthError, setDriveAuthError] = useState(false);
+
+  const handleOpenDrivePicker = async () => {
+    setShowDrivePicker(true);
+    setIsLoadingDrive(true);
+    setDriveAuthError(false); // Reset error state
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.provider_token) {
+        const files = await googleDriveService.listDocs(session.provider_token);
+        setDriveFiles(files);
+      } else {
+        throw new Error("No provider token found.");
+      }
+    } catch (e: any) {
+      console.error("Drive Error:", e);
+      // Show the "Authorize" button in the modal instead of a popup
+      setDriveAuthError(true);
+    } finally {
+      setIsLoadingDrive(false);
+    }
+  };
+
+  const handleAuthorizeDrive = async () => {
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin,
+        scopes: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/documents',
+        queryParams: { access_type: 'offline', prompt: 'consent select_account' },
+      }
+    });
+  };
+
+  const handleImportDoc = async (fileId: string, fileName: string) => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.provider_token && onImportGoogleDoc) {
+        const content = await googleDriveService.getDocContent(session.provider_token, fileId);
+        onImportGoogleDoc(fileName, content);
+        setShowDrivePicker(false);
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Failed to import document.");
+    }
+  };
 
   // Profile Picture State
   const [customAvatar, setCustomAvatar] = useState<string | null>(localStorage.getItem('muse_custom_avatar'));
@@ -357,7 +453,7 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
                             provider: 'google',
                             options: {
                               redirectTo: window.location.origin,
-                              scopes: 'https://www.googleapis.com/auth/gmail.modify',
+                              scopes: 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/documents',
                               queryParams: {
                                 access_type: 'offline',
                                 prompt: 'consent',
@@ -382,7 +478,22 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
                     )
                   )}
                 </div>
+
               </div>
+
+              {/* Google Drive Import Card - Separate Item */}
+              <button
+                onClick={handleOpenDrivePicker}
+                className={`p-6 rounded-2xl border ${isDark ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-100'} flex flex-col justify-center items-center text-center shadow-sm hover:border-muse-500 transition-all group`}
+              >
+                <div className={`w-10 h-10 rounded-full ${isDark ? 'bg-blue-900/20 text-blue-400' : 'bg-blue-100 text-blue-600'} flex items-center justify-center mb-3 group-hover:scale-110 transition-transform`}>
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M13.333 14.667v2.666h5.334v-2.666H13.333zM13.333 9.333v2.667h5.334V9.333H13.333zM8 17.333h2.667v-2.666H8v2.666zM8 12h2.667V9.333H8V12zM21.053 5.333H2.947C1.867 5.333 1.013 6.227 1.013 7.307L1 20.64c0 1.08.867 1.973 1.947 1.973h18.106c1.08 0 1.947-.893 1.947-1.973V7.307c0-1.08-.867-1.974-1.947-1.974zM16 2.667H8v2.666h8V2.667z" />
+                  </svg>
+                </div>
+                <h3 className={`font-bold text-sm ${isDark ? 'text-gray-200' : 'text-gray-900'}`}>Import from Docs</h3>
+                <p className="text-[10px] text-gray-500 mt-1">Convert a Google Doc to Project</p>
+              </button>
 
               <div className="mb-6 flex items-end justify-between">
                 <h3 className={`text-2xl font-bold ${textColor} tracking-tight`}>The Studio</h3>
@@ -432,42 +543,55 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
 
           {/* VIEW: PROJECTS */}
           {view === 'PROJECTS' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {savedProjects.length === 0 && (
-                <div className="col-span-3 text-center py-20 text-gray-500">
-                  <div className="mb-4 text-4xl">📭</div>
-                  Start a project in The Studio to see it here.
-                </div>
-              )}
-              {savedProjects.map((project) => (
+            <div className="flex flex-col gap-6">
+              <div className="flex justify-end">
                 <button
-                  key={project.id}
-                  onClick={() => onLoadProject(project)}
-                  className={`${cardBg} border ${borderColor} rounded-xl p-5 text-left hover:border-muse-500 transition-all hover:shadow-lg group`}
+                  onClick={handleOpenDrivePicker}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition-colors shadow-lg shadow-blue-900/20"
                 >
-                  <div className="flex justify-between mb-3 items-center">
-                    <span className="text-xs font-bold text-muse-500 px-2 py-1 bg-muse-500/10 rounded uppercase tracking-wider">{project.type}</span>
-                    <div className="flex items-center gap-3">
-                      <span className={`text-xs ${subTextColor}`}>{new Date(project.lastModified).toLocaleDateString()}</span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setProjectToDelete(project.id);
-                        }}
-                        className={`p-1.5 rounded-lg ${isDark ? 'hover:bg-red-500/20 text-gray-500' : 'hover:bg-red-50 text-gray-400'} hover:text-red-500 transition-all`}
-                        title="Delete Project"
-                      >
-                        <TrashIcon className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                  <h3 className={`text-lg font-bold ${textColor} mb-2`}>{project.title}</h3>
-                  <p className={`text-xs ${subTextColor} line-clamp-3 mb-4`}>{project.previewSnippet}</p>
-                  <div className={`text-xs ${subTextColor} group-hover:text-muse-500 transition-colors flex items-center gap-1`}>
-                    Open Project <ArrowRightIcon className="w-3 h-3" />
-                  </div>
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M13.333 14.667v2.666h5.334v-2.666H13.333zM13.333 9.333v2.667h5.334V9.333H13.333zM8 17.333h2.667v-2.666H8v2.666zM8 12h2.667V9.333H8V12zM21.053 5.333H2.947C1.867 5.333 1.013 6.227 1.013 7.307L1 20.64c0 1.08.867 1.973 1.947 1.973h18.106c1.08 0 1.947-.893 1.947-1.973V7.307c0-1.08-.867-1.974-1.947-1.974zM16 2.667H8v2.666h8V2.667z" />
+                  </svg>
+                  Import from Docs
                 </button>
-              ))}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {savedProjects.length === 0 && (
+                  <div className="col-span-3 text-center py-20 text-gray-500">
+                    <div className="mb-4 text-4xl">📭</div>
+                    Start a project in The Studio to see it here.
+                  </div>
+                )}
+                {savedProjects.map((project) => (
+                  <button
+                    key={project.id}
+                    onClick={() => onLoadProject(project)}
+                    className={`${cardBg} border ${borderColor} rounded-xl p-5 text-left hover:border-muse-500 transition-all hover:shadow-lg group`}
+                  >
+                    <div className="flex justify-between mb-3 items-center">
+                      <span className="text-xs font-bold text-muse-500 px-2 py-1 bg-muse-500/10 rounded uppercase tracking-wider">{project.type}</span>
+                      <div className="flex items-center gap-3">
+                        <span className={`text-xs ${subTextColor}`}>{new Date(project.lastModified).toLocaleDateString()}</span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setProjectToDelete(project.id);
+                          }}
+                          className={`p-1.5 rounded-lg ${isDark ? 'hover:bg-red-500/20 text-gray-500' : 'hover:bg-red-50 text-gray-400'} hover:text-red-500 transition-all`}
+                          title="Delete Project"
+                        >
+                          <TrashIcon className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                    <h3 className={`text-lg font-bold ${textColor} mb-2`}>{project.title}</h3>
+                    <p className={`text-xs ${subTextColor} line-clamp-3 mb-4`}>{project.previewSnippet}</p>
+                    <div className={`text-xs ${subTextColor} group-hover:text-muse-500 transition-colors flex items-center gap-1`}>
+                      Open Project <ArrowRightIcon className="w-3 h-3" />
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
@@ -686,47 +810,71 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
         </div>
       )}
 
-    </div>
-  );
-};
+      {/* --- GOOGLE DRIVE PICKER MODAL --- */}
+      {showDrivePicker && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm animate-fade-in" onClick={() => setShowDrivePicker(false)}></div>
+          <div className={`relative w-full max-w-2xl ${cardBg} border ${borderColor} rounded-2xl p-6 shadow-2xl animate-zoom-in overflow-hidden flex flex-col max-h-[80vh]`}>
+            <div className="flex justify-between items-center mb-6">
+              <h3 className={`text-xl font-bold ${textColor} flex items-center gap-2`}>
+                <svg className="w-6 h-6 text-blue-500" viewBox="0 0 24 24" fill="currentColor"><path d="M13.333 14.667v2.666h5.334v-2.666H13.333zM13.333 9.333v2.667h5.334V9.333H13.333zM8 17.333h2.667v-2.666H8v2.666zM8 12h2.667V9.333H8V12zM21.053 5.333H2.947C1.867 5.333 1.013 6.227 1.013 7.307L1 20.64c0 1.08.867 1.973 1.947 1.973h18.106c1.08 0 1.947-.893 1.947-1.973V7.307c0-1.08-.867-1.974-1.947-1.974zM16 2.667H8v2.666h8V2.667z" /></svg>
+                Import from Docs
+              </h3>
+              <button onClick={() => setShowDrivePicker(false)} className="text-gray-500 hover:text-white">✕</button>
+            </div>
 
-// --- SUB COMPONENTS ---
-
-const SidebarItem = ({ icon, label, active, onClick, isSidebarOpen, theme }: any) => {
-  const isDark = theme === 'dark';
-  const activeClass = isDark ? 'bg-muse-500/10 text-muse-400 border-muse-500/20' : 'bg-muse-50 text-muse-600 border-muse-200';
-  const inactiveClass = isDark ? 'text-gray-400 hover:bg-[#1a1a20] hover:text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900';
-
-  return (
-    <button
-      onClick={onClick}
-      className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all border border-transparent ${active ? activeClass + ' border' : inactiveClass}`}
-    >
-      <div className="w-5 h-5 flex-shrink-0">{icon}</div>
-      {isSidebarOpen && <span className="text-sm font-medium whitespace-nowrap overflow-hidden transition-all">{label}</span>}
-    </button>
-  );
-};
-
-const StatCard = ({ label, value, trend, positive, theme }: any) => {
-  const isDark = theme === 'dark';
-  const cardBg = isDark ? 'bg-[#0e0e12]' : 'bg-white';
-  const borderColor = isDark ? 'border-[#1f1f26]' : 'border-gray-200';
-  const textColor = isDark ? 'text-white' : 'text-gray-900';
-
-  return (
-    <div className={`${cardBg} border ${borderColor} rounded-xl p-5 relative overflow-hidden group hover:border-muse-500 transition-all shadow-sm`}>
-      <div className="relative z-10">
-        <div className="text-xs text-gray-500 uppercase tracking-wider mb-1 font-bold">{label}</div>
-        <div className={`text-3xl font-bold ${textColor} mb-2`}>{value}</div>
-        <div className={`text-xs font-medium inline-flex items-center gap-1 ${positive === false ? 'text-red-400' : 'text-green-500'}`}>
-          {positive === false ? <TrendingDownIcon className="w-3 h-3" /> : <TrendingUpIcon className="w-3 h-3" />}
-          {trend}
+            <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 p-2">
+              {isLoadingDrive ? (
+                <div className="flex justify-center py-10"><div className="w-8 h-8 border-2 border-muse-500 border-t-transparent rounded-full animate-spin"></div></div>
+              ) : driveAuthError ? (
+                <div className="flex flex-col items-center justify-center py-10 text-center gap-4">
+                  <div className="p-3 bg-red-500/10 rounded-full text-red-500">
+                    <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                  </div>
+                  <div>
+                    <h4 className={`text-lg font-bold ${textColor}`}>Access Required</h4>
+                    <p className={`text-sm ${subTextColor} max-w-xs mx-auto mt-1`}>
+                      We need permission to view your Google Docs to import them.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleAuthorizeDrive}
+                    className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-full font-bold text-sm transition-all shadow-lg hover:shadow-blue-500/20"
+                  >
+                    Authorize Google Drive
+                  </button>
+                </div>
+              ) : driveFiles.length === 0 ? (
+                <div className="text-center py-10 text-gray-500">No Google Docs found.</div>
+              ) : (
+                driveFiles.map(file => (
+                  <button
+                    key={file.id}
+                    onClick={() => handleImportDoc(file.id, file.name)}
+                    className={`w-full text-left p-4 rounded-xl border ${isDark ? 'bg-[#111] border-gray-800 hover:border-muse-500' : 'bg-gray-50 border-gray-200 hover:border-muse-500'} transition-all flex items-center justify-between group`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-blue-500/10 text-blue-500 rounded flex items-center justify-center">
+                        <span className="font-serif font-bold text-xs">A</span>
+                      </div>
+                      <div>
+                        <div className={`font-bold ${textColor}`}>{file.name}</div>
+                        <div className="text-[10px] text-gray-500">{new Date(file.modifiedTime).toLocaleDateString()}</div>
+                      </div>
+                    </div>
+                    <span className="text-xs font-bold text-muse-500 opacity-0 group-hover:opacity-100 transition-opacity">Import</span>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
         </div>
-      </div>
-      <div className="absolute -bottom-4 -right-4 w-24 h-24 bg-muse-500/5 rounded-full blur-2xl group-hover:bg-muse-500/10 transition-colors"></div>
+      )}
+
     </div>
   );
 };
+
+
 
 export default ProjectSelector;

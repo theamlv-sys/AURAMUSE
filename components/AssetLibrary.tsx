@@ -1,17 +1,24 @@
 import React, { useRef, useState } from 'react';
 import { Asset } from '../types';
+import { googleDriveService } from '../services/googleDriveService';
+import { supabase } from '../services/supabaseClient';
 
 interface AssetLibraryProps {
     assets: Asset[];
     onUpload: (files: FileList) => void;
     onAddLink: (url: string) => void;
     onDelete: (id: string) => void;
+    theme: 'dark' | 'light';
 }
 
-const AssetLibrary: React.FC<AssetLibraryProps & { theme: 'dark' | 'light' }> = ({ assets, onUpload, onAddLink, onDelete, theme }) => {
+const AssetLibrary: React.FC<AssetLibraryProps> = ({ assets, onUpload, onAddLink, onDelete, theme }) => {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [showLinkInput, setShowLinkInput] = useState(false);
     const [linkUrl, setLinkUrl] = useState('');
+    const [showDrivePicker, setShowDrivePicker] = useState(false);
+    const [driveFiles, setDriveFiles] = useState<any[]>([]);
+    const [isLoadingDrive, setIsLoadingDrive] = useState(false);
+    const [driveAuthError, setDriveAuthError] = useState(false);
 
     const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
@@ -25,6 +32,57 @@ const AssetLibrary: React.FC<AssetLibraryProps & { theme: 'dark' | 'light' }> = 
             onAddLink(linkUrl);
             setLinkUrl('');
             setShowLinkInput(false);
+        }
+    };
+
+    const handleOpenDrivePicker = async () => {
+        setShowDrivePicker(true);
+        setIsLoadingDrive(true);
+        setDriveAuthError(false);
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.provider_token) {
+                const files = await googleDriveService.listMedia(session.provider_token);
+                setDriveFiles(files);
+            } else {
+                throw new Error("No provider token found.");
+            }
+        } catch (e: any) {
+            console.error("Drive Error:", e);
+            setDriveAuthError(true);
+        } finally {
+            setIsLoadingDrive(false);
+        }
+    };
+
+    const handleAuthorizeDrive = async () => {
+        await supabase.auth.signInWithOAuth({
+            provider: 'google',
+            options: {
+                redirectTo: window.location.origin,
+                scopes: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/documents',
+                queryParams: { access_type: 'offline', prompt: 'consent select_account' },
+            }
+        });
+    };
+
+    const handleImportMedia = async (fileId: string, fileName: string, mimeType: string) => {
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.provider_token) {
+                const blob = await googleDriveService.getFileBlob(session.provider_token, fileId);
+                const file = new File([blob], fileName, { type: mimeType });
+
+                // Create a DataTransfer to simulate file input
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(file);
+                onUpload(dataTransfer.files);
+
+                setShowDrivePicker(false);
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Failed to import media.");
         }
     };
 
@@ -48,6 +106,15 @@ const AssetLibrary: React.FC<AssetLibraryProps & { theme: 'dark' | 'light' }> = 
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 011.242 7.244l-4.5 4.5a4.5 4.5 0 01-6.364-6.364l1.757-1.757m13.35-.622l1.757-1.757a4.5 4.5 0 00-6.364-6.364l-4.5 4.5a4.5 4.5 0 001.242 7.244" />
+                        </svg>
+                    </button>
+                    <button
+                        onClick={handleOpenDrivePicker}
+                        className={`p-1.5 ${btnBg} rounded transition-colors ${textMain}`}
+                        title="Import from Google Drive"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                            <path d="M13.333 14.667v2.666h5.334v-2.666H13.333zM13.333 9.333v2.667h5.334V9.333H13.333zM8 17.333h2.667v-2.666H8v2.666zM8 12h2.667V9.333H8V12zM21.053 5.333H2.947C1.867 5.333 1.013 6.227 1.013 7.307L1 20.64c0 1.08.867 1.973 1.947 1.973h18.106c1.08 0 1.947-.893 1.947-1.973V7.307c0-1.08-.867-1.974-1.947-1.974zM16 2.667H8v2.666h8V2.667z" />
                         </svg>
                     </button>
                     <button
@@ -156,6 +223,73 @@ const AssetLibrary: React.FC<AssetLibraryProps & { theme: 'dark' | 'light' }> = 
                     </div>
                 ))}
             </div>
+
+            {/* --- GOOGLE DRIVE PICKER MODAL --- */}
+            {showDrivePicker && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+                    <div className="absolute inset-0 bg-black/80 backdrop-blur-sm animate-fade-in" onClick={() => setShowDrivePicker(false)}></div>
+                    <div className={`relative w-full max-w-lg ${bgCard} border ${border} rounded-2xl p-6 shadow-2xl animate-zoom-in overflow-hidden flex flex-col max-h-[70vh]`}>
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className={`text-lg font-bold ${textMain} flex items-center gap-2`}>
+                                <svg className="w-5 h-5 text-blue-500" viewBox="0 0 24 24" fill="currentColor"><path d="M13.333 14.667v2.666h5.334v-2.666H13.333zM13.333 9.333v2.667h5.334V9.333H13.333zM8 17.333h2.667v-2.666H8v2.666zM8 12h2.667V9.333H8V12zM21.053 5.333H2.947C1.867 5.333 1.013 6.227 1.013 7.307L1 20.64c0 1.08.867 1.973 1.947 1.973h18.106c1.08 0 1.947-.893 1.947-1.973V7.307c0-1.08-.867-1.974-1.947-1.974zM16 2.667H8v2.666h8V2.667z" /></svg>
+                                Import Media from Drive
+                            </h3>
+                            <button onClick={() => setShowDrivePicker(false)} className="text-gray-500 hover:text-white">✕</button>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 p-2">
+                            {isLoadingDrive ? (
+                                <div className="flex justify-center py-10"><div className="w-8 h-8 border-2 border-muse-500 border-t-transparent rounded-full animate-spin"></div></div>
+                            ) : driveAuthError ? (
+                                <div className="flex flex-col items-center justify-center py-10 text-center gap-4">
+                                    <div className="p-3 bg-red-500/10 rounded-full text-red-500">
+                                        <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                                    </div>
+                                    <div>
+                                        <h4 className={`text-lg font-bold ${textMain}`}>Access Required</h4>
+                                        <p className={`text-sm ${textSec} max-w-xs mx-auto mt-1`}>
+                                            We need permission to view your Google Drive files.
+                                        </p>
+                                    </div>
+                                    <button
+                                        onClick={handleAuthorizeDrive}
+                                        className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-full font-bold text-sm transition-all shadow-lg hover:shadow-blue-500/20"
+                                    >
+                                        Authorize Google Drive
+                                    </button>
+                                </div>
+                            ) : driveFiles.length === 0 ? (
+                                <div className="text-center py-10 text-gray-500">No media found (Images/Videos).</div>
+                            ) : (
+                                driveFiles.map(file => (
+                                    <button
+                                        key={file.id}
+                                        onClick={() => handleImportMedia(file.id, file.name, file.mimeType)}
+                                        className={`w-full text-left p-3 rounded-xl border ${isDark ? 'bg-[#111] border-gray-800 hover:border-muse-500' : 'bg-gray-50 border-gray-200 hover:border-muse-500'} transition-all flex items-center justify-between group`}
+                                    >
+                                        <div className="flex items-center gap-3 overflow-hidden">
+                                            {file.thumbnailLink ? (
+                                                <img src={file.thumbnailLink} alt="" className="w-10 h-10 object-cover rounded-md bg-gray-800" referrerPolicy="no-referrer" />
+                                            ) : (
+                                                <div className="w-10 h-10 bg-gray-800 rounded-md flex items-center justify-center text-gray-500">
+                                                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                                </div>
+                                            )}
+                                            <div className="min-w-0">
+                                                <div className={`font-bold text-sm ${textMain} truncate`}>{file.name}</div>
+                                                <div className={`text-[10px] ${textSec}`}>{new Date(file.modifiedTime).toLocaleDateString()}</div>
+                                            </div>
+                                        </div>
+                                        <span className="text-[10px] font-bold text-muse-500 bg-muse-500/10 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                                            Import
+                                        </span>
+                                    </button>
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

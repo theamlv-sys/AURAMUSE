@@ -25,7 +25,9 @@ const LandingPage: React.FC<LandingPageProps> = ({ onSelectTier, onNavigateLegal
                 return;
             }
 
+            // Supabase Session Check
             const { data: { session } } = await supabase.auth.getSession();
+            // const session = null; // Removed offline override
             setIsChecking(false);
 
             if (session) {
@@ -47,10 +49,11 @@ const LandingPage: React.FC<LandingPageProps> = ({ onSelectTier, onNavigateLegal
         const { error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
             options: {
-                redirectTo: window.location.origin, // This sends 'http://localhost:3005' when local
+                redirectTo: window.location.origin,
+                scopes: 'email profile', // Minimal scopes for initial login
                 queryParams: {
                     access_type: 'offline',
-                    prompt: 'consent select_account', // Forces Google to show account selector
+                    prompt: 'consent select_account',
                 },
             }
         });
