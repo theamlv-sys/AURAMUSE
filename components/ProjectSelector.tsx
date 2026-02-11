@@ -350,6 +350,14 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
               isSidebarOpen={isSidebarOpen}
               theme={theme}
             />
+            <SidebarItem
+              icon={<SparklesIcon />}
+              label="Domo Suite"
+              active={view === 'CREATIVE_SUITE'}
+              onClick={() => onNavigate('CREATIVE_SUITE')}
+              isSidebarOpen={isSidebarOpen}
+              theme={theme}
+            />
           </div>
 
           {/* Bottom Actions */}

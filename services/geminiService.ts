@@ -750,3 +750,296 @@ export const generateEmailDraft = async (
     return "Error generating draft.";
   }
 };
+
+// ----------------------
+// DOMO SUITE SERVICES
+// ----------------------
+
+const DOMO_MODELS = ['gemini-3-flash-preview', 'gemini-2.5-flash-preview-04-17', 'gemini-2.0-flash-exp'];
+
+const domoGenerate = async (
+  ai: any,
+  prompt: string,
+  jsonMode: boolean = false
+): Promise<string> => {
+  for (let i = 0; i < DOMO_MODELS.length; i++) {
+    try {
+      const config: any = {};
+      if (jsonMode) config.responseMimeType = "application/json";
+      const response = await ai.models.generateContent({
+        model: DOMO_MODELS[i],
+        contents: { parts: [{ text: prompt }] },
+        config
+      });
+      return response.text || "";
+    } catch (error: any) {
+      const status = error?.status || error?.error?.code || error?.message || '';
+      const isRetryable = String(status).includes('503') || String(status).includes('UNAVAILABLE') || String(status).includes('429') || String(status).includes('overloaded');
+      if (isRetryable && i < DOMO_MODELS.length - 1) {
+        console.warn(`Model ${DOMO_MODELS[i]} unavailable, falling back to ${DOMO_MODELS[i + 1]}...`);
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error("All models unavailable.");
+};
+
+export const generatePodcastScript = async (
+  topic: string,
+  format: 'talking_head' | 'solo_podcast' | 'interview' | 'panel',
+  duration: string,
+  style: string,
+  additionalNotes: string = ''
+): Promise<string> => {
+  const ai = getAI();
+  const modelId = 'gemini-3-flash-preview';
+
+  const formatGuides: Record<string, string> = {
+    talking_head: `FORMAT: Talking Head Video Script
+    - Write for a single person speaking directly to camera
+    - Include [LOOK AT CAMERA], [LEAN IN], [GESTURE] visual cues
+    - Include [B-ROLL: description] cues for visual cutaways
+    - Optimize for YouTube retention: pattern interrupts every 60-90 seconds`,
+    solo_podcast: `FORMAT: Solo Podcast Episode
+    - Write for audio-only consumption
+    - Include vocal delivery notes: [PAUSE], [LOWER VOICE], [PICK UP PACE]
+    - Include [SFX: description] for sound effect insertions
+    - Optimize for listener engagement: stories, anecdotes, callbacks`,
+    interview: `FORMAT: Interview/Conversation Podcast
+    - Write HOST questions and expected talking points
+    - Include follow-up probes and "pivot" questions
+    - Mark HOST: and GUEST: throughout
+    - Include [FOLLOW-UP IF...] conditional branches`,
+    panel: `FORMAT: Panel Discussion
+    - Write MODERATOR prompts and topic introductions
+    - Include discussion questions that create productive tension
+    - Mark MODERATOR:, PANELIST_1:, PANELIST_2: etc.
+    - Include [OPEN TO PANEL] and [REDIRECT] cues`
+  };
+
+  const prompt = `You are the world's #1 podcast producer and script doctor. Shows you've produced have hit #1 on Apple Podcasts and videos have gone viral with 50M+ views. Your scripts are legendary for their hooks, pacing, and audience retention.
+
+${formatGuides[format]}
+
+DURATION TARGET: ${duration}
+STYLE/TONE: ${style}
+TOPIC: "${topic}"
+${additionalNotes ? `ADDITIONAL CONTEXT: ${additionalNotes}` : ''}
+
+CRITICAL REQUIREMENTS:
+1. COLD OPEN (first 15 seconds): Start with the most provocative, curiosity-inducing moment — a shocking stat, bold claim, emotional moment, or cliffhanger. This is NOT the intro; this is the hook that stops people from scrolling.
+
+2. INTRO/BRAND (15-30 seconds): Quick, punchy intro. "Welcome to [show name placeholder]..." Keep it SHORT.
+
+3. SEGMENTS: Break the content into clearly labeled segments with:
+   - Timing markers [MM:SS]
+   - Delivery notes in [brackets]
+   - Transition hooks that tease what's coming ("But here's where it gets really interesting...")
+   - Pattern interrupts to reset attention every 60-90s
+
+4. ENGAGEMENT HOOKS:
+   - "Comment below if you've ever..."
+   - "Most people don't know this, but..."
+   - Rhetorical questions that make the viewer think
+
+5. CTA + OUTRO: Natural, non-desperate call to action. Then a memorable sign-off.
+
+6. SPEAKER NOTES: After each segment, include brief director's notes on emotional tone, energy level, and delivery tips.
+
+Write the COMPLETE, production-ready script now. Make it so good that the host can read it cold and still sound incredible.`;
+
+  try {
+    const result = await domoGenerate(ai, prompt, false);
+    return result || "Script generation failed.";
+  } catch (error) {
+    console.error("Podcast Script Error:", error);
+    return "Error generating script. " + (error instanceof Error ? error.message : '');
+  }
+};
+
+export const generateNewsletterContent = async (
+  topic: string,
+  type: 'newsletter' | 'short_ebook' | 'longform_guide',
+  style: string,
+  additionalNotes: string = ''
+): Promise<{ title: string; subtitle: string; sections: { heading: string; content: string; type: 'text' | 'callout' | 'quote' | 'stat' | 'list' | 'cta' }[] }> => {
+  const ai = getAI();
+  const modelId = 'gemini-3-flash-preview';
+
+  const typeGuides: Record<string, string> = {
+    newsletter: `TYPE: Newsletter (1500-2500 words)
+    - Opening hook that makes readers feel they NEED to read this
+    - 3-5 sections with clear value propositions
+    - "Stat" callout sections with bold numbers
+    - Pull quotes for visual variety
+    - CTA section at the end
+    - Keep paragraphs SHORT (2-3 sentences max)`,
+    short_ebook: `TYPE: Short Ebook (3000-5000 words)
+    - Professional title page content (title + subtitle + author placeholder)
+    - Table of contents structure
+    - 5-8 chapters/sections with deep content
+    - Include "Key Takeaway" callout boxes
+    - Expert quotes and statistical callouts
+    - Conclusion with actionable next steps
+    - About the Author placeholder section`,
+    longform_guide: `TYPE: Long-form Guide (5000-8000 words)
+    - Comprehensive, authoritative guide structure
+    - 8-12 detailed sections/chapters
+    - Include real-world examples and case studies
+    - Step-by-step instructions where applicable
+    - Pro Tips callout boxes throughout
+    - Summary checklists per chapter
+    - Resource appendix section`
+  };
+
+  const prompt = `You are a world-class content strategist and editor who has produced bestselling ebooks and newsletters with 500K+ subscribers. Your content is sharp, valuable, and beautifully structured.
+
+${typeGuides[type]}
+STYLE/AESTHETIC: ${style}
+TOPIC: "${topic}"
+${additionalNotes ? `ADDITIONAL CONTEXT: ${additionalNotes}` : ''}
+
+OUTPUT FORMAT: Return ONLY valid JSON with this exact structure:
+{
+  "title": "The main title - make it compelling and click-worthy",
+  "subtitle": "A subtitle that adds context and intrigue",
+  "sections": [
+    {
+      "heading": "Section heading",
+      "content": "Rich content with **bold**, *italic*, and clean formatting. Use \\n for paragraph breaks. Make this SUBSTANTIAL and VALUABLE.",
+      "type": "text"
+    },
+    {
+      "heading": "A Striking Statistic",
+      "content": "87% of professionals who read this report saw a measurable improvement.",
+      "type": "stat"
+    },
+    {
+      "heading": "",
+      "content": "Innovation is not about ideas. It's about making ideas happen. — Scott Belsky",
+      "type": "quote"
+    },
+    {
+      "heading": "Key Takeaways",
+      "content": "• Point one\\n• Point two\\n• Point three",
+      "type": "list"
+    },
+    {
+      "heading": "Pro Tip",
+      "content": "An insider tip or advanced technique that adds extra value.",
+      "type": "callout"
+    },
+    {
+      "heading": "Ready to Get Started?",
+      "content": "Your call-to-action content here.",
+      "type": "cta"
+    }
+  ]
+}
+
+CRITICAL QUALITY RULES:
+1. NO generic AI filler. Every sentence must provide real value.
+2. NO words like "tapestry", "delve", "landscape", "foster", "spearhead", "harness", "synergy".
+3. Write like a human expert — confident, conversational, authoritative.
+4. Mix section types for visual variety: text, stat, quote, list, callout, cta.
+5. Content must be SUBSTANTIAL — no thin sections. Each text section should be at least 2-3 rich paragraphs.
+6. Use concrete examples, numbers, and actionable insights throughout.`;
+
+  try {
+    const result = await domoGenerate(ai, prompt, true);
+    const json = JSON.parse(result || "{}");
+    return {
+      title: json.title || "Untitled",
+      subtitle: json.subtitle || "",
+      sections: json.sections || [{ heading: "Error", content: "Failed to generate content.", type: "text" }]
+    };
+  } catch (error) {
+    console.error("Newsletter Error:", error);
+    return {
+      title: "Generation Error",
+      subtitle: "",
+      sections: [{ heading: "Error", content: "Failed to generate content. " + (error instanceof Error ? error.message : ''), type: "text" }]
+    };
+  }
+};
+
+export const generateSlideContent = async (
+  topic: string,
+  slideCount: number,
+  style: string,
+  additionalNotes: string = ''
+): Promise<{ title: string; slides: { title: string; bullets: string[]; notes: string; layout: 'title' | 'content' | 'two_column' | 'image_focus' | 'quote' | 'section_break' }[] }> => {
+  const ai = getAI();
+  const modelId = 'gemini-3-flash-preview';
+
+  const prompt = `You are a world-class presentation designer and strategist who has created pitch decks that raised $100M+ and keynotes viewed by millions. Your slides are legendary for clarity, impact, and visual storytelling.
+
+TOPIC: "${topic}"
+SLIDE COUNT: ${slideCount} slides
+STYLE: ${style}
+${additionalNotes ? `ADDITIONAL CONTEXT: ${additionalNotes}` : ''}
+
+OUTPUT FORMAT: Return ONLY valid JSON with this exact structure:
+{
+  "title": "Presentation Title",
+  "slides": [
+    {
+      "title": "Opening Impact Title",
+      "bullets": [],
+      "notes": "Speaker notes for this slide. Include delivery tips, talking points, and timing suggestions.",
+      "layout": "title"
+    },
+    {
+      "title": "Agenda / What We'll Cover",
+      "bullets": ["Topic 1: Brief description", "Topic 2: Brief description", "Topic 3: Brief description"],
+      "notes": "Quick overview slide. Spend 15-20 seconds here.",
+      "layout": "content"
+    },
+    {
+      "title": "Section: [Topic Name]",
+      "bullets": [],
+      "notes": "Transition slide to next major section.",
+      "layout": "section_break"
+    },
+    {
+      "title": "Key Data Point",
+      "bullets": ["Main insight with supporting detail", "Second point with evidence"],
+      "notes": "Emphasize the contrast between expectation and reality.",
+      "layout": "content"
+    },
+    {
+      "title": "",
+      "bullets": ["A powerful quote that reinforces your message — Attribution"],
+      "notes": "Let the quote sit for 3-4 seconds before continuing.",
+      "layout": "quote"
+    }
+  ]
+}
+
+CRITICAL PRESENTATION RULES:
+1. LESS IS MORE: Max 4-5 bullet points per slide. Each bullet max 10-12 words.
+2. ONE IDEA PER SLIDE: Don't cram. If a topic needs more, split into multiple slides.
+3. SLIDE VARIETY: Alternate between layouts (content, quote, image_focus, section_break) for visual rhythm.
+4. STORY ARC: Build a narrative — Problem → Evidence → Solution → Impact → Call to Action.
+5. STICKY PHRASES: Use memorable, quotable language that audiences remember.
+6. SPEAKER NOTES: These are critical — include what to SAY (not just what's on the slide), delivery tips, transitions, and timing.
+7. OPENING: First slide must be a powerful title with a subtitle that creates curiosity.
+8. CLOSING: Last slide should be a strong CTA or memorable takeaway, NOT a generic "Thank You".
+9. NO AI LANGUAGE: No "tapestry", "delve", "landscape", "synergy", "harness".`;
+
+  try {
+    const result = await domoGenerate(ai, prompt, true);
+    const json = JSON.parse(result || "{}");
+    return {
+      title: json.title || "Untitled Presentation",
+      slides: json.slides || [{ title: "Error", bullets: ["Failed to generate."], notes: "", layout: "content" }]
+    };
+  } catch (error) {
+    console.error("Slides Error:", error);
+    return {
+      title: "Generation Error",
+      slides: [{ title: "Error", bullets: ["Failed: " + (error instanceof Error ? error.message : '')], notes: "", layout: "content" }]
+    };
+  }
+};

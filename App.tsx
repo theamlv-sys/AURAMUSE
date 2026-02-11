@@ -13,6 +13,7 @@ import TermsOfService from './components/TermsOfService';
 import NotesMode from './components/NotesMode';
 import CalendarMode from './components/CalendarMode';
 import EmailStudio from './components/EmailStudio';
+import CreativeSuite from './components/CreativeSuite';
 import { ProjectType, Asset, TTSState, VoiceName, StoryBibleEntry, VersionSnapshot, SubscriptionTier, UsageStats, TIERS, SavedProject, ViewMode } from './types';
 import { persistenceService } from './services/persistenceService';
 import { supabase } from './services/supabaseClient';
@@ -438,6 +439,14 @@ const App: React.FC = () => {
             userTier={userTier}
             providerToken={providerToken}
             gmailToken={gmailToken}
+        />;
+    }
+
+    if (viewMode === 'CREATIVE_SUITE') {
+        return <CreativeSuite
+            onBack={() => setViewMode('HOME')}
+            userTier={userTier}
+            theme={theme}
         />;
     }
 

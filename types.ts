@@ -13,7 +13,8 @@ export enum ProjectType {
     SOCIAL_MEDIA = 'SOCIAL_MEDIA',
     GENERAL = 'GENERAL',
     NOTES = 'NOTES',
-    CALENDAR = 'CALENDAR'
+    CALENDAR = 'CALENDAR',
+    PODCAST = 'PODCAST'
 }
 
 export interface Project {
@@ -190,6 +191,8 @@ export interface PlanLimits {
     hasVeo: boolean;
     hasAudioStudio: boolean;
     maxAudioCharsPerGen: number; // Regulation for TTS Studio
+    hasNewsletterEbook: boolean;
+    hasSlides: boolean;
 }
 
 export const TIERS: Record<SubscriptionTier, { name: string, price: number, limits: PlanLimits }> = {
@@ -200,7 +203,8 @@ export const TIERS: Record<SubscriptionTier, { name: string, price: number, limi
             videos: 0, images: 0, maxVoiceMinutes: 0,
             voiceCredits: 0, imageCredits: 0, videoCredits: 0, audioCredits: 0,
             hasEnsembleCast: false, hasVoiceAssistant: false, hasBible: false, hasVeo: false,
-            hasAudioStudio: false, maxAudioCharsPerGen: 0
+            hasAudioStudio: false, maxAudioCharsPerGen: 0,
+            hasNewsletterEbook: false, hasSlides: false
         }
     },
     SCRIBE: {
@@ -210,7 +214,8 @@ export const TIERS: Record<SubscriptionTier, { name: string, price: number, limi
             videos: 0, images: 20, maxVoiceMinutes: 0,
             voiceCredits: 0, imageCredits: 10, videoCredits: 0, audioCredits: 1000,
             hasEnsembleCast: false, hasVoiceAssistant: false, hasBible: true, hasVeo: false,
-            hasAudioStudio: true, maxAudioCharsPerGen: 1000
+            hasAudioStudio: true, maxAudioCharsPerGen: 1000,
+            hasNewsletterEbook: false, hasSlides: false
         }
     },
     AUTEUR: {
@@ -220,7 +225,8 @@ export const TIERS: Record<SubscriptionTier, { name: string, price: number, limi
             videos: 5, images: 100, maxVoiceMinutes: 60,
             voiceCredits: 20, imageCredits: 50, videoCredits: 3, audioCredits: 5000,
             hasEnsembleCast: true, hasVoiceAssistant: true, hasBible: true, hasVeo: true,
-            hasAudioStudio: true, maxAudioCharsPerGen: 5000
+            hasAudioStudio: true, maxAudioCharsPerGen: 5000,
+            hasNewsletterEbook: false, hasSlides: false
         }
     },
     SHOWRUNNER: {
@@ -230,7 +236,8 @@ export const TIERS: Record<SubscriptionTier, { name: string, price: number, limi
             videos: 25, images: 500, maxVoiceMinutes: 300,
             voiceCredits: 100, imageCredits: 200, videoCredits: 10, audioCredits: 15000,
             hasEnsembleCast: true, hasVoiceAssistant: true, hasBible: true, hasVeo: true,
-            hasAudioStudio: true, maxAudioCharsPerGen: 15000
+            hasAudioStudio: true, maxAudioCharsPerGen: 15000,
+            hasNewsletterEbook: true, hasSlides: true
         }
     }
 };
@@ -244,4 +251,4 @@ export interface SavedProject {
     previewSnippet: string;
 }
 
-export type ViewMode = 'HOME' | 'EDITOR' | 'SETTINGS' | 'LEGAL_PRIVACY' | 'LEGAL_TERMS' | 'NOTES' | 'CALENDAR';
+export type ViewMode = 'HOME' | 'EDITOR' | 'SETTINGS' | 'LEGAL_PRIVACY' | 'LEGAL_TERMS' | 'NOTES' | 'CALENDAR' | 'CREATIVE_SUITE';
