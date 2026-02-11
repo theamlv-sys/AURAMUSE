@@ -10,6 +10,9 @@ import SubscriptionModal from './components/SubscriptionModal';
 import LandingPage from './components/LandingPage';
 import PrivacyPolicy from './components/PrivacyPolicy';
 import TermsOfService from './components/TermsOfService';
+import NotesMode from './components/NotesMode';
+import CalendarMode from './components/CalendarMode';
+import EmailStudio from './components/EmailStudio';
 import { ProjectType, Asset, TTSState, VoiceName, StoryBibleEntry, VersionSnapshot, SubscriptionTier, UsageStats, TIERS, SavedProject, ViewMode } from './types';
 import { persistenceService } from './services/persistenceService';
 import { supabase } from './services/supabaseClient';
@@ -25,6 +28,7 @@ const App: React.FC = () => {
     const [theme, setTheme] = useState<'dark' | 'light'>('dark');
     const [viewMode, setViewMode] = useState<ViewMode>('HOME');
     const [projectType, setProjectType] = useState<ProjectType | null>(null);
+    const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
     const [content, setContent] = useState('');
     const [title, setTitle] = useState('');
     const [assets, setAssets] = useState<Asset[]>([]);
@@ -94,12 +98,24 @@ const App: React.FC = () => {
     useEffect(() => {
         let mounted = true;
 
+        // GMAIL CHECK — runs IMMEDIATELY when we get a session, BEFORE any async work.
+        // provider_token is transient and only available at the moment the auth event fires.
+        const checkGmailConnection = (currentSession: Session) => {
+            const isReturningFromGmailAuth = sessionStorage.getItem('muse_connecting_gmail') === 'true';
+            if (isReturningFromGmailAuth && currentSession.provider_token) {
+                console.log("GMAIL: Token found! Setting connected.");
+                setIsGmailConnected(true);
+                // Store token in sessionStorage so EmailStudio can use it even after the transient token is gone
+                sessionStorage.setItem('muse_gmail_token', currentSession.provider_token);
+                sessionStorage.removeItem('muse_connecting_gmail');
+            }
+        };
+
         const loadUserData = async (currentSession: Session) => {
             if (!mounted) return;
             setSession(currentSession);
 
             try {
-                // Parallel fetching for speed
                 const [usageData, projects, assetsData, bibleData, versionsData] = await Promise.all([
                     persistenceService.loadUsage(),
                     persistenceService.loadProjects(),
@@ -115,9 +131,6 @@ const App: React.FC = () => {
                     setUsage(usageData.usage);
                 }
 
-                // Merge cloud projects with local if needed, or just prefer cloud
-                // For now, let's use the cloud projects if available, otherwise keep local (or merge?)
-                // Simple strategy: Use cloud projects logic
                 if (projects.length > 0) {
                     setSavedProjects(projects);
                 }
@@ -126,23 +139,19 @@ const App: React.FC = () => {
                 setStoryBible(bibleData);
                 setVersionHistory(versionsData);
 
-                if (currentSession.provider_token) {
-                    setIsGmailConnected(true);
+                if (usageData && usageData.tier !== 'FREE') {
+                    setHasAccess(true);
                 }
-
-                setHasAccess(true);
 
             } catch (error) {
                 console.error("Failed to load user data:", error);
-                // Even if data load fails, if we have a session, we should probably allow access
-                // but maybe alert the user.
                 if (currentSession) setHasAccess(true);
             } finally {
                 if (mounted) setIsInitializing(false);
             }
         };
 
-        // 1. Check Session
+        // 1. Check Session on mount
         supabase.auth.getSession().then(({ data: { session }, error }) => {
             if (error) {
                 console.error("Auth session check error:", error);
@@ -151,6 +160,8 @@ const App: React.FC = () => {
             }
 
             if (session) {
+                // IMMEDIATELY check gmail BEFORE any async work
+                checkGmailConnection(session);
                 loadUserData(session);
             } else {
                 if (mounted) {
@@ -163,13 +174,13 @@ const App: React.FC = () => {
         // 2. Listen for Auth Changes
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             if (session) {
+                // IMMEDIATELY check gmail BEFORE any async work
+                checkGmailConnection(session);
                 loadUserData(session);
             } else {
                 if (mounted) {
                     setHasAccess(false);
                     setSession(null);
-                    // Don't necessarily stop initializing if we are just signing out, 
-                    // but if we are initializing it handles it.
                 }
             }
         });
@@ -215,6 +226,8 @@ const App: React.FC = () => {
     const handleLogout = async () => {
         await supabase.auth.signOut();
         sessionStorage.removeItem('muse_gmail_active');
+        sessionStorage.removeItem('muse_gmail_token');
+        sessionStorage.removeItem('muse_connecting_gmail');
         setIsGmailConnected(false);
         setHasAccess(false);
         setSession(null);
@@ -228,7 +241,16 @@ const App: React.FC = () => {
     };
 
     const handleProjectSelect = (type: ProjectType) => {
+        if ((type as any) === 'NOTES') {
+            setViewMode('NOTES');
+            return;
+        }
+        if ((type as any) === 'CALENDAR') {
+            setViewMode('CALENDAR');
+            return;
+        }
         setProjectType(type);
+        setCurrentProjectId(null); // Start fresh
         setTitle(`My ${type.charAt(0) + type.slice(1).toLowerCase().replace('_', ' ')}`);
         setContent('');
         setViewMode('EDITOR');
@@ -236,6 +258,7 @@ const App: React.FC = () => {
 
     const handleLoadProject = (project: SavedProject) => {
         setProjectType(project.type);
+        setCurrentProjectId(project.id);
         setTitle(project.title);
         setContent(project.content);
         setViewMode('EDITOR');
@@ -248,8 +271,12 @@ const App: React.FC = () => {
 
     const handleSaveProject = async () => {
         if (!projectType) return;
+
+        // If we have a current ID, update it. Otherwise create new.
+        const idToUse = currentProjectId || crypto.randomUUID();
+
         const newProject: SavedProject = {
-            id: crypto.randomUUID(),
+            id: idToUse,
             title: title || 'Untitled Project',
             type: projectType,
             content: content,
@@ -258,11 +285,10 @@ const App: React.FC = () => {
         };
 
         try {
-            // Optimistic
+            // Optimistic Update
             setSavedProjects(prev => {
-                const idx = prev.findIndex(p => p.title === newProject.title && p.type === newProject.type);
+                const idx = prev.findIndex(p => p.id === newProject.id);
                 if (idx >= 0) {
-                    newProject.id = prev[idx].id; // Keep ID
                     const copy = [...prev];
                     copy[idx] = newProject;
                     return copy;
@@ -271,6 +297,7 @@ const App: React.FC = () => {
             });
 
             await persistenceService.saveProject(newProject);
+            setCurrentProjectId(idToUse); // Ensure we keep editing this one
             alert('Project Saved!');
         } catch (error: any) {
             console.error("Save error:", error);
@@ -367,6 +394,26 @@ const App: React.FC = () => {
     // 2. Main App
     const currentStoryBible = storyBible.filter(e => e.projectType === projectType);
     const currentVersionHistory = versionHistory.filter(v => v.projectType === projectType);
+    const providerToken = session?.provider_token;
+    const gmailToken = session?.provider_token;
+
+    if (viewMode === 'NOTES') {
+        return <NotesMode
+            onBack={() => setViewMode('HOME')}
+            userTier={userTier}
+            gmailToken={gmailToken}
+            providerToken={providerToken}
+        />;
+    }
+
+    if (viewMode === 'CALENDAR') {
+        return <CalendarMode
+            onBack={() => setViewMode('HOME')}
+            userTier={userTier}
+            providerToken={providerToken}
+            gmailToken={gmailToken}
+        />;
+    }
 
     if (viewMode !== 'EDITOR') {
         return (
@@ -420,10 +467,10 @@ const App: React.FC = () => {
             <div className="w-16 bg-gray-950 border-r border-gray-800 flex flex-col items-center py-6 gap-6 z-20">
                 <div onClick={() => handleNavigate('HOME')} className="w-10 h-10 bg-muse-600 rounded-lg flex items-center justify-center cursor-pointer hover:bg-muse-500 text-white font-serif font-bold text-xl">M</div>
                 <div className="flex flex-col gap-4 mt-8">
-                    <NavButton active={activeTab === 'chat' && showRightPanel} onClick={() => { setShowRightPanel(true); setActiveTab('chat'); }} icon="sparkles" />
-                    <NavButton active={activeTab === 'bible' && showRightPanel} onClick={() => { if (checkLimit('bible')) { setShowRightPanel(true); setActiveTab('bible'); } }} icon="book" />
-                    <NavButton active={activeTab === 'assets' && showRightPanel} onClick={() => { setShowRightPanel(true); setActiveTab('assets'); }} icon="library" />
-                    <NavButton active={activeTab === 'audio' && showRightPanel} onClick={() => { if (checkLimit('audio')) { setShowRightPanel(true); setActiveTab('audio'); } }} icon="mic" />
+                    <NavButton active={activeTab === 'chat' && showRightPanel} onClick={() => { setShowRightPanel(true); setActiveTab('chat'); }} icon="sparkles" tooltip="AI Chat" />
+                    <NavButton active={activeTab === 'bible' && showRightPanel} onClick={() => { if (checkLimit('bible')) { setShowRightPanel(true); setActiveTab('bible'); } }} icon="book" tooltip="Story Bible" />
+                    <NavButton active={activeTab === 'assets' && showRightPanel} onClick={() => { setShowRightPanel(true); setActiveTab('assets'); }} icon="library" tooltip="Assets" />
+                    <NavButton active={activeTab === 'audio' && showRightPanel} onClick={() => { if (checkLimit('audio')) { setShowRightPanel(true); setActiveTab('audio'); } }} icon="mic" tooltip="Audio Studio" />
 
                     <button onClick={() => setShowRightPanel(!showRightPanel)} className="p-2 text-gray-500 mt-auto"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg></button>
                 </div>
@@ -452,10 +499,35 @@ const App: React.FC = () => {
                             const { data: { session } } = await supabase.auth.getSession();
                             if (session?.provider_token) {
                                 await googleDriveService.createDoc(session.provider_token, t, c);
+                                alert("Successfully exported to Google Docs!");
+                            } else {
+                                if (confirm("You are not connected to Google. Would you like to connect now to enable exporting?")) {
+                                    const { error } = await supabase.auth.signInWithOAuth({
+                                        provider: 'google',
+                                        options: {
+                                            scopes: 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive.file',
+                                            redirectTo: window.location.origin
+                                        }
+                                    });
+                                    if (error) alert(error.message);
+                                }
+                            }
+                        }}
+                        onUploadToDrive={async (t, c) => {
+                            if (userTier !== 'SHOWRUNNER') {
+                                alert("Google Drive export is a Showrunner feature.");
+                                setShowSubModal(true);
+                                return;
+                            }
+                            const { data: { session } } = await supabase.auth.getSession();
+                            if (session?.provider_token) {
+                                await googleDriveService.uploadFile(session.provider_token, t, c, 'text/plain');
                             } else {
                                 alert("Please sign in again");
                             }
                         }}
+                        isGmailConnected={isGmailConnected}
+                        userTier={userTier}
                     />
                 </div>
 
@@ -522,6 +594,9 @@ const NavButton = ({ active, onClick, icon, tooltip }: any) => (
         {icon === 'book' && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" /></svg>}
         {icon === 'library' && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg>}
         {icon === 'mic' && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" /></svg>}
+        {icon === 'notes' && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>}
+        {icon === 'calendar' && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5m-9-6h.008v.008H12v-.008zM12 15h.008v.008H12V15zm0 2.25h.008v.008H12v-.008zM9.75 15h.008v.008H9.75V15zm0 2.25h.008v.008H9.75v-.008zM7.5 15h.008v.008H7.5V15zm0 2.25h.008v.008H7.5v-.008zm6.75-4.5h.008v.008h-.008v-.008zm0 2.25h.008v.008h-.008V15zm0 2.25h.008v.008h-.008v-.008zm2.25-4.5h.008v.008H16.5v-.008zm0 2.25h.008v.008H16.5V15z" /></svg>}
+        {icon === 'mail' && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><rect width="20" height="16" x="2" y="4" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" /></svg>}
     </button>
 );
 

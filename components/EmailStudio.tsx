@@ -3,13 +3,17 @@ import { supabase } from '../services/supabaseClient';
 import { gmailService, EmailMessage } from '../services/gmailService';
 import { generateEmailDraft } from '../services/geminiService';
 
+import { SubscriptionTier } from '../types';
+
 interface EmailStudioProps {
     isDark: boolean;
     onClose?: () => void;
+    userTier?: SubscriptionTier;
+    isConnectedProp?: boolean;
 }
 
-const EmailStudio: React.FC<EmailStudioProps> = ({ isDark, onClose }) => {
-    const [isConnected, setIsConnected] = useState(false);
+const EmailStudio: React.FC<EmailStudioProps> = ({ isDark, onClose, userTier = 'FREE', isConnectedProp = false }) => {
+    const [isConnected, setIsConnected] = useState(isConnectedProp); // Initialize with prop
     const [isLoading, setIsLoading] = useState(false);
     const [emails, setEmails] = useState<EmailMessage[]>([]);
     const [view, setView] = useState<'INBOX' | 'SENT'>('INBOX');
@@ -17,28 +21,39 @@ const EmailStudio: React.FC<EmailStudioProps> = ({ isDark, onClose }) => {
     const [replyDraft, setReplyDraft] = useState('');
     const [providerToken, setProviderToken] = useState<string | null>(null);
 
-    // Initial check for session provider token
+    // Load emails when connected — use stored token from sessionStorage (set by App.tsx)
     useEffect(() => {
-        const checkConnection = async () => {
-            const { data: { session }, error } = await supabase.auth.getSession();
-            console.log("EmailStudio Session Check:", session);
-            console.log("EmailStudio Provider Token:", session?.provider_token);
+        if (isConnectedProp) {
+            setIsConnected(true);
+            const load = async () => {
+                // First try the stored token (most reliable — set by App.tsx when OAuth returned)
+                let token = sessionStorage.getItem('muse_gmail_token');
 
-            if (error) console.error("Session Error:", error);
+                // Fallback: try session
+                if (!token) {
+                    const { data: { session } } = await supabase.auth.getSession();
+                    token = session?.provider_token || null;
+                }
 
-            if (session?.provider_token) {
-                setProviderToken(session.provider_token);
-                setIsConnected(true);
-                loadEmails(session.provider_token);
-            } else {
-                console.warn("No provider token found in session.");
-            }
-        };
-        checkConnection();
-    }, []);
+                if (token) {
+                    setProviderToken(token);
+                    loadEmails(token);
+                } else {
+                    console.warn("EmailStudio: No gmail token found anywhere");
+                }
+            };
+            load();
+        }
+    }, [isConnectedProp]);
 
     const handleConnect = async () => {
+        if (userTier !== 'SHOWRUNNER') {
+            alert("Gmail integration is a Showrunner feature.");
+            return;
+        }
+
         console.log("Initiating Gmail OAuth...");
+        sessionStorage.setItem('muse_connecting_gmail', 'true'); // Flag to auto-connect on return
         const { data, error } = await supabase.auth.signInWithOAuth({
             provider: 'google',
             options: {
@@ -47,6 +62,7 @@ const EmailStudio: React.FC<EmailStudioProps> = ({ isDark, onClose }) => {
                 queryParams: {
                     access_type: 'offline',
                     prompt: 'consent',
+                    include_granted_scopes: 'true'
                 },
             },
         });
@@ -136,19 +152,12 @@ const EmailStudio: React.FC<EmailStudioProps> = ({ isDark, onClose }) => {
     const itemHover = isDark ? 'hover:bg-gray-800' : 'hover:bg-gray-100';
 
     if (!isConnected) {
+        // This should rarely show — connection is handled by ProjectSelector's "Connect Gmail" button.
+        // If we get here, just show a brief loading state.
         return (
-            <div className={`flex items-center justify-center h-full w-full ${bgColor} ${textColor}`}>
-                <div className="text-center p-8 max-w-md">
-                    <div className="w-16 h-16 bg-gray-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
-                        <svg className="w-8 h-8 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                        </svg>
-                    </div>
-                    <h2 className="text-xl font-bold mb-2 font-serif">Inbox Locked</h2>
-                    <p className="text-gray-500 mb-6 text-sm">
-                        To access the Executive Comms suite, please connect your Gmail account from the <b>Home Dashboard</b>.
-                    </p>
-                </div>
+            <div className={`h-full flex flex-col items-center justify-center p-8 text-center ${isDark ? 'text-gray-400' : 'text-gray-500'}`}>
+                <div className="animate-spin w-8 h-8 border-2 border-muse-500 border-t-transparent rounded-full mb-4"></div>
+                <p className="text-sm">Loading inbox...</p>
             </div>
         );
     }

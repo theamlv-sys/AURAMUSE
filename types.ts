@@ -11,7 +11,9 @@ export enum ProjectType {
     AD = 'AD',
     COMMERCIAL = 'COMMERCIAL',
     SOCIAL_MEDIA = 'SOCIAL_MEDIA',
-    GENERAL = 'GENERAL'
+    GENERAL = 'GENERAL',
+    NOTES = 'NOTES',
+    CALENDAR = 'CALENDAR'
 }
 
 export interface Project {
@@ -242,4 +244,4 @@ export interface SavedProject {
     previewSnippet: string;
 }
 
-export type ViewMode = 'HOME' | 'PROJECTS' | 'ASSETS' | 'SETTINGS' | 'EDITOR' | 'EMAIL' | 'LEGAL_PRIVACY' | 'LEGAL_TERMS';
+export type ViewMode = 'HOME' | 'EDITOR' | 'SETTINGS' | 'LEGAL_PRIVACY' | 'LEGAL_TERMS' | 'NOTES' | 'CALENDAR';

@@ -145,6 +145,42 @@ export const sendEmailTool: FunctionDeclaration = {
   }
 };
 
+export const listCalendarEventsTool: FunctionDeclaration = {
+  name: "listCalendarEvents",
+  description: "Lists upcoming events from the user's primary Google Calendar.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {},
+  }
+};
+
+export const createCalendarEventTool: FunctionDeclaration = {
+  name: "createCalendarEvent",
+  description: "Creates a new event in the user's Google Calendar.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      summary: { type: Type.STRING, description: "Title of the event." },
+      description: { type: Type.STRING, description: "Description or notes for the event." },
+      startTime: { type: Type.STRING, description: "Start time in ISO 8601 format (e.g., 2023-10-27T10:00:00Z)." },
+      endTime: { type: Type.STRING, description: "End time in ISO 8601 format." }
+    },
+    required: ["summary", "startTime", "endTime"]
+  }
+};
+
+export const deleteCalendarEventTool: FunctionDeclaration = {
+  name: "deleteCalendarEvent",
+  description: "Deletes an event from the user's Google Calendar.",
+  parameters: {
+    type: Type.OBJECT,
+    properties: {
+      eventId: { type: Type.STRING, description: "The unique ID of the event to delete." }
+    },
+    required: ["eventId"]
+  }
+};
+
 export const generateWriting = async (
   prompt: string,
   projectType: ProjectType,

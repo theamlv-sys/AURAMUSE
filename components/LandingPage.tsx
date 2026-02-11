@@ -50,7 +50,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onSelectTier, onNavigateLegal
             provider: 'google',
             options: {
                 redirectTo: window.location.origin,
-                scopes: 'email profile', // Minimal scopes for initial login
+                scopes: 'email profile', // Minimal scopes; requesting more later per feature
                 queryParams: {
                     access_type: 'offline',
                     prompt: 'consent select_account',

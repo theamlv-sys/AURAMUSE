@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality } from "@google/genai";
-import { updateEditorTool, appendEditorTool, triggerSearchTool, configureAudioStudioTool, listEmailsTool, sendEmailTool } from '../services/geminiService';
+import { updateEditorTool, appendEditorTool, triggerSearchTool, configureAudioStudioTool, listEmailsTool, sendEmailTool, listCalendarEventsTool, createCalendarEventTool, deleteCalendarEventTool } from '../services/geminiService';
 import { createPcmBlob, decodeAudioData, base64ToUint8Array } from '../utils/audioUtils';
 import { Asset, ProjectType, Message, TTSState, TTSCharacter } from '../types';
 import { gmailService } from '../services/gmailService';
+import { googleCalendarService } from '../services/googleCalendarService';
 
 interface UseLiveProps {
     onUpdateEditor: (newContent: string) => void;
@@ -15,9 +16,10 @@ interface UseLiveProps {
     projectType: ProjectType;
     chatHistory: Message[];
     gmailToken?: string;
+    providerToken?: string; // Google OAuth Token for Calendar
 }
 
-export const useLive = ({ onUpdateEditor, onAppendEditor, onTriggerSearch, onConfigureTTS, editorContent, assets, projectType, chatHistory, gmailToken }: UseLiveProps) => {
+export const useLive = ({ onUpdateEditor, onAppendEditor, onTriggerSearch, onConfigureTTS, editorContent, assets, projectType, chatHistory, gmailToken, providerToken }: UseLiveProps) => {
     const [isActive, setIsActive] = useState(false);
     const [isConnecting, setIsConnecting] = useState(false);
     const [volume, setVolume] = useState(0);
@@ -129,7 +131,7 @@ export const useLive = ({ onUpdateEditor, onAppendEditor, onTriggerSearch, onCon
                 .map(m => `${m.role.toUpperCase()}: ${m.content}`)
                 .join('\n');
 
-            const systemInstruction = `You are Muse's Voice Mode.
+            const systemInstruction = `You are Aura Assistant, the advanced production AI for Muse.
 CURRENT MODE: ${projectType}
 ASSETS: ${assets.length > 0 ? 'See list below.' : 'None.'}
 
@@ -140,6 +142,9 @@ CAPABILITIES:
 4. 'configureAudioStudio': FULL CONTROL of the Audio/TTS studio. Use this to generate speech/audio dramas.
 5. 'listEmails': Access the user's Gmail inbox. Read emails to them.
 6. 'sendEmail': Send emails on their behalf. ALWAYS confirm the distinct content before sending.
+7. 'listCalendarEvents': Check the user's schedule.
+8. 'createCalendarEvent': Schedule meetings/deadlines.
+9. 'deleteCalendarEvent': Remove events from the calendar.
 
 CONTEXT (Recent Conversation):
 ${recentMsgs || "No previous context."}
@@ -157,7 +162,7 @@ ${assetDesc ? `\nASSET LIST:\n${assetDesc}` : ''}
                     },
                     systemInstruction: systemInstruction,
                     tools: [
-                        { functionDeclarations: [updateEditorTool, appendEditorTool, triggerSearchTool, configureAudioStudioTool, listEmailsTool, sendEmailTool] }
+                        { functionDeclarations: [updateEditorTool, appendEditorTool, triggerSearchTool, configureAudioStudioTool, listEmailsTool, sendEmailTool, listCalendarEventsTool, createCalendarEventTool, deleteCalendarEventTool] }
                     ]
                 },
                 callbacks: {
@@ -390,6 +395,91 @@ ${assetDesc ? `\nASSET LIST:\n${assetDesc}` : ''}
                                                             name: fc.name,
                                                             response: { result: "Failed to send email." }
                                                         }]
+                                                    });
+                                                });
+                                            });
+                                    }
+                                } else if (fc.name === 'listCalendarEvents') {
+                                    const args = fc.args as any;
+                                    console.log("Tool Call: listCalendarEvents", args);
+                                    if (!providerToken) {
+                                        sessionPromiseRef.current?.then(session => {
+                                            session.sendToolResponse({
+                                                functionResponses: [{ id: fc.id, name: fc.name, response: { result: "Error: No Calendar access. User must connect Google account." } }]
+                                            });
+                                        });
+                                    } else {
+                                        googleCalendarService.listEvents(providerToken)
+                                            .then(events => {
+                                                sessionPromiseRef.current?.then(session => {
+                                                    session.sendToolResponse({
+                                                        functionResponses: [{ id: fc.id, name: fc.name, response: { result: JSON.stringify(events) } }]
+                                                    });
+                                                });
+                                            })
+                                            .catch(err => {
+                                                sessionPromiseRef.current?.then(session => {
+                                                    session.sendToolResponse({
+                                                        functionResponses: [{ id: fc.id, name: fc.name, response: { result: "Failed to fetch events: " + err.message } }]
+                                                    });
+                                                });
+                                            });
+                                    }
+                                } else if (fc.name === 'createCalendarEvent') {
+                                    const args = fc.args as any;
+                                    console.log("Tool Call: createCalendarEvent", args);
+                                    if (!providerToken) {
+                                        sessionPromiseRef.current?.then(session => {
+                                            session.sendToolResponse({
+                                                functionResponses: [{ id: fc.id, name: fc.name, response: { result: "Error: No Calendar access." } }]
+                                            });
+                                        });
+                                    } else {
+                                        // Simple parsing or direct usage if AI provides ISO strings
+                                        // AI usually provides YYYY-MM-DDTHH:MM:SS
+                                        googleCalendarService.createEvent(providerToken, {
+                                            summary: args.summary,
+                                            description: args.description || '',
+                                            start: args.startTime,
+                                            end: args.endTime
+                                        })
+                                            .then(evt => {
+                                                sessionPromiseRef.current?.then(session => {
+                                                    session.sendToolResponse({
+                                                        functionResponses: [{ id: fc.id, name: fc.name, response: { result: `Event created: ${evt.summary} at ${evt.start.dateTime}` } }]
+                                                    });
+                                                });
+                                            })
+                                            .catch(err => {
+                                                sessionPromiseRef.current?.then(session => {
+                                                    session.sendToolResponse({
+                                                        functionResponses: [{ id: fc.id, name: fc.name, response: { result: "Failed to create event: " + err.message } }]
+                                                    });
+                                                });
+                                            });
+                                    }
+                                } else if (fc.name === 'deleteCalendarEvent') {
+                                    const args = fc.args as any;
+                                    console.log("Tool Call: deleteCalendarEvent", args);
+                                    if (!providerToken) {
+                                        sessionPromiseRef.current?.then(session => {
+                                            session.sendToolResponse({
+                                                functionResponses: [{ id: fc.id, name: fc.name, response: { result: "Error: No Calendar access." } }]
+                                            });
+                                        });
+                                    } else {
+                                        googleCalendarService.deleteEvent(providerToken, args.eventId)
+                                            .then(() => {
+                                                sessionPromiseRef.current?.then(session => {
+                                                    session.sendToolResponse({
+                                                        functionResponses: [{ id: fc.id, name: fc.name, response: { result: "Event deleted successfully." } }]
+                                                    });
+                                                });
+                                            })
+                                            .catch(err => {
+                                                sessionPromiseRef.current?.then(session => {
+                                                    session.sendToolResponse({
+                                                        functionResponses: [{ id: fc.id, name: fc.name, response: { result: "Failed to delete event: " + err.message } }]
                                                     });
                                                 });
                                             });

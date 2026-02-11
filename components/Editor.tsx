@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { marked } from 'marked';
-import { ProjectType, VersionSnapshot } from '../types';
+import { ProjectType, VersionSnapshot, SubscriptionTier } from '../types';
 import EmailStudio from './EmailStudio';
 
 // Add type definition for html2pdf attached to window
@@ -23,13 +23,17 @@ interface EditorProps {
     onSave: () => void;
     theme: 'dark' | 'light';
     onExportGoogleDoc?: (title: string, content: string) => Promise<void>;
+    onUploadToDrive?: (title: string, content: string) => Promise<void>;
+    isGmailConnected?: boolean;
+    userTier?: SubscriptionTier;
 }
 
-const Editor: React.FC<EditorProps> = ({ content, onChange, title, onTitleChange, projectType, versionHistory, onRestoreVersion, onSnapshot, onDeleteSnapshot, onSave, theme, onExportGoogleDoc }) => {
+const Editor: React.FC<EditorProps> = ({ content, onChange, title, onTitleChange, projectType, versionHistory, onRestoreVersion, onSnapshot, onDeleteSnapshot, onSave, theme, onExportGoogleDoc, onUploadToDrive, isGmailConnected, userTier }) => {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [showExportMenu, setShowExportMenu] = useState(false);
     const [isExportingPdf, setIsExportingPdf] = useState(false);
     const [isExportingDrive, setIsExportingDrive] = useState(false);
+    const [isUploadingDrive, setIsUploadingDrive] = useState(false);
     const [showHistory, setShowHistory] = useState(false);
     const [emailMode, setEmailMode] = useState<'DRAFT' | 'INBOX'>('INBOX');
 
@@ -281,7 +285,7 @@ const Editor: React.FC<EditorProps> = ({ content, onChange, title, onTitleChange
                 {/* EMAIL STUDIO INTEGRATION */}
                 {projectType === ProjectType.EMAIL && emailMode === 'INBOX' && (
                     <div className="absolute inset-0 z-20 bg-gray-900">
-                        <EmailStudio isDark={isDark} onClose={() => setEmailMode('DRAFT')} />
+                        <EmailStudio isDark={isDark} onClose={() => setEmailMode('DRAFT')} isConnectedProp={isGmailConnected} userTier={userTier || 'FREE'} />
                     </div>
                 )}
 
@@ -312,15 +316,23 @@ const Editor: React.FC<EditorProps> = ({ content, onChange, title, onTitleChange
                                     {isExportingPdf ? 'Preparing...' : 'Save as PDF'}
                                 </button>
                                 <div className={`h-px ${isDark ? 'bg-gray-700' : 'bg-gray-100'} mx-2`}></div>
+                                <div className={`h-px ${isDark ? 'bg-gray-700' : 'bg-gray-100'} mx-2`}></div>
+
+                                {/* EXPORT VERSION TO DOCS */}
                                 <button
-                                    onClick={handleExportDrive}
-                                    disabled={isExportingDrive}
-                                    className={`w-full text-left px-4 py-3 text-sm ${textMain} hover:${bgSec} transition-colors flex items-center gap-2 disabled:opacity-50`}
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (onExportGoogleDoc) {
+                                            onExportGoogleDoc(`${title} - v${new Date(v.timestamp).toLocaleTimeString()}`, v.content);
+                                        } else {
+                                            alert("Google Drive export not available.");
+                                        }
+                                    }}
+                                    className={`w-full text-left px-4 py-3 text-sm ${textMain} hover:${bgSec} transition-colors flex items-center gap-2`}
+                                    title="Export this version to Google Docs"
                                 >
-                                    <span className="text-blue-500">
-                                        {isExportingDrive ? '...' : 'G↑'}
-                                    </span>
-                                    {isExportingDrive ? 'Exporting...' : 'Export to G-Drive'}
+                                    <span className="text-blue-500">📄</span>
+                                    Export Version to Docs
                                 </button>
                             </div>
                         ))}

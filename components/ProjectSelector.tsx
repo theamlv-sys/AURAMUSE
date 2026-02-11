@@ -53,6 +53,8 @@ const TrashIcon = (props: any) => <svg xmlns="http://www.w3.org/2000/svg" width=
 const WalletIcon = (props: any) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" /><path d="M3 5v14a2 2 0 0 0 2 2h16v-5" /><path d="M18 12a2 2 0 0 0 0 4h4v-4Z" /></svg>;
 const CreditCardIcon = (props: any) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><rect width="20" height="14" x="2" y="5" rx="2" /><line x1="2" x2="22" y1="10" y2="10" /></svg>;
 const ActivityIcon = (props: any) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M22 12h-4l-3 9L9 3l-3 9H2" /></svg>;
+const NotesIcon = (props: any) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>;
+const CalendarIcon = (props: any) => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" {...props}><path d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5m-9-6h.008v.008H12v-.008zM12 15h.008v.008H12V15zm0 2.25h.008v.008H12v-.008zM9.75 15h.008v.008H9.75V15zm0 2.25h.008v.008H9.75v-.008zM7.5 15h.008v.008H7.5V15zm0 2.25h.008v.008H7.5v-.008zm6.75-4.5h.008v.008h-.008v-.008zm0 2.25h.008v.008h-.008V15zm0 2.25h.008v.008h-.008v-.008zm2.25-4.5h.008v.008H16.5v-.008zm0 2.25h.008v.008H16.5V15z" /></svg>;
 
 // --- SUB COMPONENTS ---
 const SidebarItem = ({ icon, label, active, onClick, isSidebarOpen, theme }: any) => {
@@ -163,6 +165,12 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
   const [driveAuthError, setDriveAuthError] = useState(false);
 
   const handleOpenDrivePicker = async () => {
+    // 1. Check User Tier
+    if (userTier !== 'SHOWRUNNER') {
+      alert("Importing from Google Docs is a Showrunner feature.");
+      return;
+    }
+
     setShowDrivePicker(true);
     setIsLoadingDrive(true);
     setDriveAuthError(false); // Reset error state
@@ -188,8 +196,13 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
       provider: 'google',
       options: {
         redirectTo: window.location.origin,
+        // Request Drive scopes (and Gmail just in case, or rely on included)
         scopes: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/documents',
-        queryParams: { access_type: 'offline', prompt: 'consent select_account' },
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent select_account',
+          include_granted_scopes: 'true'
+        },
       }
     });
   };
@@ -321,6 +334,22 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
               isSidebarOpen={isSidebarOpen}
               theme={theme}
             />
+            <SidebarItem
+              icon={<NotesIcon />}
+              label="Quick Notes"
+              active={view === 'NOTES'}
+              onClick={() => onNavigate('NOTES')}
+              isSidebarOpen={isSidebarOpen}
+              theme={theme}
+            />
+            <SidebarItem
+              icon={<CalendarIcon />}
+              label="Calendar"
+              active={view === 'CALENDAR'}
+              onClick={() => onNavigate('CALENDAR')}
+              isSidebarOpen={isSidebarOpen}
+              theme={theme}
+            />
           </div>
 
           {/* Bottom Actions */}
@@ -447,16 +476,18 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
                     userTier === 'SHOWRUNNER' ? (
                       <button
                         onClick={async () => {
-                          sessionStorage.setItem('muse_gmail_active', 'true');
+                          // Set the CORRECT flag that App.tsx checks on return
+                          sessionStorage.setItem('muse_connecting_gmail', 'true');
                           const { supabase } = await import('../services/supabaseClient');
                           await supabase.auth.signInWithOAuth({
                             provider: 'google',
                             options: {
                               redirectTo: window.location.origin,
-                              scopes: 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/documents',
+                              scopes: 'https://www.googleapis.com/auth/gmail.modify',
                               queryParams: {
                                 access_type: 'offline',
                                 prompt: 'consent',
+                                include_granted_scopes: 'true',
                               },
                             },
                           });
