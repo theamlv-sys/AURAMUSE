@@ -236,8 +236,12 @@ const App: React.FC = () => {
 
     // --- NAVIGATION HELPERS ---
     const handleNavigate = (mode: ViewMode) => {
-        setViewMode(mode);
-        if (mode !== 'EDITOR') setProjectType(null);
+        if (mode === 'LEGAL_PRIVACY' || mode === 'LEGAL_TERMS') {
+            navigateToView(mode);
+        } else {
+            navigateToView(mode);
+            if (mode !== 'EDITOR') setProjectType(null);
+        }
     };
 
     const handleProjectSelect = (type: ProjectType) => {
@@ -373,7 +377,27 @@ const App: React.FC = () => {
         persistenceService.saveVersion(snap);
     };
 
-    // RENDER
+    // URL routing for /privacy and /terms
+    useEffect(() => {
+        const path = window.location.pathname;
+        if (path === '/privacy') setViewMode('LEGAL_PRIVACY');
+        else if (path === '/terms') setViewMode('LEGAL_TERMS');
+    }, []);
+
+    // Sync viewMode changes to URL
+    const navigateToView = (mode: string) => {
+        if (mode === 'LEGAL_PRIVACY') {
+            window.history.pushState({}, '', '/privacy');
+        } else if (mode === 'LEGAL_TERMS') {
+            window.history.pushState({}, '', '/terms');
+        } else {
+            // Reset to root for any other view
+            if (window.location.pathname !== '/') {
+                window.history.pushState({}, '', '/');
+            }
+        }
+        setViewMode(mode);
+    };
 
     // 0. Initializing
     if (isInitializing) {
@@ -384,11 +408,13 @@ const App: React.FC = () => {
         );
     }
 
+    // Legal pages — always accessible regardless of auth state
+    if (viewMode === 'LEGAL_PRIVACY') return <PrivacyPolicy onBack={() => navigateToView('HOME')} theme={theme} />;
+    if (viewMode === 'LEGAL_TERMS') return <TermsOfService onBack={() => navigateToView('HOME')} theme={theme} />;
+
     // 1. Landing Page
     if (!hasAccess) {
-        if (viewMode === 'LEGAL_PRIVACY') return <PrivacyPolicy onBack={() => setViewMode('HOME')} theme={theme} />;
-        if (viewMode === 'LEGAL_TERMS') return <TermsOfService onBack={() => setViewMode('HOME')} theme={theme} />;
-        return <LandingPage onSelectTier={handleTierSelection} onNavigateLegal={(mode) => setViewMode(mode)} />;
+        return <LandingPage onSelectTier={handleTierSelection} onNavigateLegal={(mode) => navigateToView(mode)} />;
     }
 
     // 2. Main App
