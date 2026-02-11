@@ -196,10 +196,10 @@ const LandingPage: React.FC<LandingPageProps> = ({ onSelectTier, onNavigateLegal
             </div>
 
             {/* ------------------- FOOTER ------------------- */}
-            <div className={`fixed bottom-0 w-full p-4 flex justify-between items-center text-[10px] text-gray-500 z-50 transition-opacity duration-1000 ${stage === 'pricing' ? 'opacity-100' : 'opacity-0'}`}>
+            <div className={`fixed bottom-0 w-full p-4 flex justify-between items-center text-[10px] text-gray-500 z-50 transition-opacity duration-1000 ${stage === 'pricing' ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                 <div className="flex gap-4">
-                    <button onClick={() => onNavigateLegal?.('LEGAL_PRIVACY')} className="hover:text-amber-500 transition-colors uppercase tracking-widest">Privacy Policy</button>
-                    <button onClick={() => onNavigateLegal?.('LEGAL_TERMS')} className="hover:text-amber-500 transition-colors uppercase tracking-widest">Terms of Service</button>
+                    <a href="/privacy" onClick={(e) => { e.preventDefault(); onNavigateLegal?.('LEGAL_PRIVACY'); }} className="hover:text-amber-500 transition-colors uppercase tracking-widest">Privacy Policy</a>
+                    <a href="/terms" onClick={(e) => { e.preventDefault(); onNavigateLegal?.('LEGAL_TERMS'); }} className="hover:text-amber-500 transition-colors uppercase tracking-widest">Terms of Service</a>
                 </div>
                 <div>
                     © 2026 AuraDomoMuse
