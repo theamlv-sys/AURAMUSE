@@ -843,7 +843,8 @@ const domoGenerate = async (
 
 export const generatePodcastScript = async (
   topic: string,
-  format: 'talking_head' | 'solo_podcast' | 'interview' | 'panel',
+  format: 'talking_head' | 'solo_podcast' | 'interview' | 'panel' | 'two_hosts',
+  hosts: string[],
   duration: string,
   style: string,
   additionalNotes: string = ''
@@ -871,7 +872,13 @@ export const generatePodcastScript = async (
     - Write MODERATOR prompts and topic introductions
     - Include discussion questions that create productive tension
     - Mark MODERATOR:, PANELIST_1:, PANELIST_2: etc.
-    - Include [OPEN TO PANEL] and [REDIRECT] cues`
+    - Include [OPEN TO PANEL] and [REDIRECT] cues`,
+    two_hosts: `FORMAT: Two-Host Co-Hosted Podcast (Conversational)
+    - Write for two equal co-hosts with distinct personalities (Host 1 & Host 2)
+    - witty banter, dynamic back-and-forth, and high energy
+    - Interruptions, finishing each other's sentences, and shared laughter
+    - Mark HOST_1: and HOST_2: throughout
+    - Structure: Banter Intro -> Deep Dive Topic -> Debate/Discussion -> Takeaways -> Outro`
   };
 
   const prompt = `You are the world's #1 podcast producer and script doctor. Shows you've produced have hit #1 on Apple Podcasts and videos have gone viral with 50M+ views. Your scripts are legendary for their hooks, pacing, and audience retention.
@@ -881,6 +888,7 @@ ${formatGuides[format]}
 DURATION TARGET: ${duration}
 STYLE/TONE: ${style}
 TOPIC: "${topic}"
+HOSTS: ${hosts.join(' & ')}
 ${additionalNotes ? `ADDITIONAL CONTEXT: ${additionalNotes}` : ''}
 
 CRITICAL REQUIREMENTS:

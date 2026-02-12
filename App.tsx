@@ -13,7 +13,7 @@ import TermsOfService from './components/TermsOfService';
 import NotesMode from './components/NotesMode';
 import CalendarMode from './components/CalendarMode';
 import EmailStudio from './components/EmailStudio';
-import CreativeSuite from './components/CreativeSuite';
+import { CreativeSuite } from './components/CreativeSuite';
 import { ProjectType, Asset, TTSState, VoiceName, StoryBibleEntry, VersionSnapshot, SubscriptionTier, UsageStats, TIERS, SavedProject, ViewMode } from './types';
 import { persistenceService } from './services/persistenceService';
 import { supabase } from './services/supabaseClient';
@@ -52,8 +52,33 @@ const App: React.FC = () => {
 
     // --- UI STATE ---
     const [showRightPanel, setShowRightPanel] = useState(true);
-    const [activeTab, setActiveTab] = useState<'chat' | 'assets' | 'audio' | 'bible' | 'domo'>('chat');
+    const [activeTab, setActiveTab] = useState<'chat' | 'assets' | 'audio' | 'bible'>('chat'); // Removed 'domo'
     const [showSubModal, setShowSubModal] = useState(false);
+
+    // --- DOMO SUITE STATE (Lifted for Voice/Agent Control) ---
+    // Podcast
+    const [podTopic, setPodTopic] = useState('');
+    const [podStyle, setPodStyle] = useState('Casual & Fun');
+    const [podHost1, setPodHost1] = useState('Alex');
+    const [podHost2, setPodHost2] = useState('Jamie');
+    const [podDuration, setPodDuration] = useState('Short (2-3 min)');
+    const [podFormat, setPodFormat] = useState('two_hosts');
+    // Newsletter
+    const [nlTopic, setNlTopic] = useState('');
+    const [nlType, setNlType] = useState<'newsletter' | 'short_ebook' | 'longform_guide'>('newsletter');
+    const [nlStyle, setNlStyle] = useState('modern');
+    const [nlNotes, setNlNotes] = useState('');
+    const [nlContent, setNlContent] = useState<any>(null);
+    const [showNlPreview, setShowNlPreview] = useState(false);
+    // Slides
+    const [slTopic, setSlTopic] = useState('');
+    const [slCount, setSlCount] = useState(10);
+    const [slStyle, setSlStyle] = useState('professional');
+    const [slNotes, setSlNotes] = useState('');
+    const [slDeck, setSlDeck] = useState<any>(null);
+    const [slImages, setSlImages] = useState<Record<number, string>>({});
+    const [showSlPreview, setShowSlPreview] = useState(false);
+    const [activeSlideIndex, setActiveSlideIndex] = useState(0);
 
     // --- BUSINESS STATE ---
     const [userTier, setUserTier] = useState<SubscriptionTier>('FREE');
@@ -239,10 +264,10 @@ const App: React.FC = () => {
     const handleNavigate = (mode: ViewMode) => {
         if (mode === 'CREATIVE_SUITE') {
             // Route Domo Suite into the EDITOR layout with full workspace access
-            setProjectType(ProjectType.PODCAST);
+            // We just need to set the project type. The new layout will show the panel.
+            setProjectType(ProjectType.PODCAST); // Default to podcast
             setViewMode('EDITOR');
-            setShowRightPanel(true);
-            setActiveTab('domo');
+            // Don't force right panel open anymore, Domo has its own panel
             return;
         }
         if (mode === 'LEGAL_PRIVACY' || mode === 'LEGAL_TERMS') {
@@ -511,11 +536,61 @@ const App: React.FC = () => {
                     <NavButton active={activeTab === 'bible' && showRightPanel} onClick={() => { if (checkLimit('bible')) { setShowRightPanel(true); setActiveTab('bible'); } }} icon="book" tooltip="Story Bible" />
                     <NavButton active={activeTab === 'assets' && showRightPanel} onClick={() => { setShowRightPanel(true); setActiveTab('assets'); }} icon="library" tooltip="Assets" />
                     <NavButton active={activeTab === 'audio' && showRightPanel} onClick={() => { if (checkLimit('audio')) { setShowRightPanel(true); setActiveTab('audio'); } }} icon="mic" tooltip="Audio Studio" />
-                    {isDomoSuiteType && <NavButton active={activeTab === 'domo' && showRightPanel} onClick={() => { setShowRightPanel(true); setActiveTab('domo'); }} icon="sparkles" tooltip="Domo Suite" />}
+
+                    <div className="w-10 h-[1px] bg-gray-800 my-2" />
+
+                    <NavButton active={isDomoSuiteType} onClick={() => handleNavigate('CREATIVE_SUITE')} icon="domo" tooltip="Domo Creative Suite" />
+
+                    {isDomoSuiteType && (
+                        <div className="flex flex-col gap-3 mt-2 pt-2 border-t border-gray-800/50">
+                            <NavButton active={projectType === ProjectType.PODCAST} onClick={() => handleProjectSelect(ProjectType.PODCAST)} icon="podcast" tooltip="Podcast Studio" />
+                            <NavButton active={projectType === ProjectType.NEWSLETTER} onClick={() => handleProjectSelect(ProjectType.NEWSLETTER)} icon="newsletter" tooltip="Newsletter Gen" />
+                            <NavButton active={projectType === ProjectType.SLIDES} onClick={() => handleProjectSelect(ProjectType.SLIDES)} icon="slides" tooltip="Slide Deck AI" />
+                        </div>
+                    )}
 
                     <button onClick={() => setShowRightPanel(!showRightPanel)} className="p-2 text-gray-500 mt-auto"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg></button>
                 </div>
             </div>
+
+            {/* DOMO SUITE PANEL (Permanent Left Column for Domo Types) */}
+            {isDomoSuiteType && (
+                <div className="w-[360px] border-r border-gray-200 dark:border-gray-800 flex flex-col z-10 shrink-0 bg-white dark:bg-gray-900 transition-colors duration-500">
+                    <CreativeSuite
+                        userTier={userTier}
+                        theme={theme}
+                        projectType={projectType!}
+                        editorContent={content}
+                        onSendToEditor={(t) => {
+                            handleSnapshot();
+                            setContent(t);
+                        }}
+                        // Passed State
+                        podTopic={podTopic} setPodTopic={setPodTopic}
+                        podStyle={podStyle} setPodStyle={setPodStyle}
+                        podHost1={podHost1} setPodHost1={setPodHost1}
+                        podHost2={podHost2} setPodHost2={setPodHost2}
+                        podDuration={podDuration} setPodDuration={setPodDuration}
+                        podFormat={podFormat} setPodFormat={setPodFormat}
+
+                        nlTopic={nlTopic} setNlTopic={setNlTopic}
+                        nlType={nlType} setNlType={setNlType}
+                        nlStyle={nlStyle} setNlStyle={setNlStyle}
+                        nlNotes={nlNotes} setNlNotes={setNlNotes}
+                        nlContent={nlContent} setNlContent={setNlContent}
+                        showNlPreview={showNlPreview} setShowNlPreview={setShowNlPreview}
+
+                        slTopic={slTopic} setSlTopic={setSlTopic}
+                        slCount={slCount} setSlCount={setSlCount}
+                        slStyle={slStyle} setSlStyle={setSlStyle}
+                        slNotes={slNotes} setSlNotes={setSlNotes}
+                        slDeck={slDeck} setSlDeck={setSlDeck}
+                        slImages={slImages} setSlImages={setSlImages}
+                        showSlPreview={showSlPreview} setShowSlPreview={setShowSlPreview}
+                        activeSlideIndex={activeSlideIndex} setActiveSlideIndex={setActiveSlideIndex}
+                    />
+                </div>
+            )}
 
             <div className="flex-1 flex overflow-hidden relative">
                 <div className="flex-1 w-full h-full overflow-hidden">
@@ -647,6 +722,10 @@ const NavButton = ({ active, onClick, icon, tooltip }: any) => (
         {icon === 'notes' && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" /></svg>}
         {icon === 'calendar' && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5m-9-6h.008v.008H12v-.008zM12 15h.008v.008H12V15zm0 2.25h.008v.008H12v-.008zM9.75 15h.008v.008H9.75V15zm0 2.25h.008v.008H9.75v-.008zM7.5 15h.008v.008H7.5V15zm0 2.25h.008v.008H7.5v-.008zm6.75-4.5h.008v.008h-.008v-.008zm0 2.25h.008v.008h-.008V15zm0 2.25h.008v.008h-.008v-.008zm2.25-4.5h.008v.008H16.5v-.008zm0 2.25h.008v.008H16.5V15z" /></svg>}
         {icon === 'mail' && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><rect width="20" height="16" x="2" y="4" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" /></svg>}
+        {icon === 'podcast' && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c.843.5 1.5 1.357 1.5 2.25 0 2.5-4 4.5-9 4.5s-9-2-9-4.5c0-.893.657-1.75 1.5-2.25" /></svg>}
+        {icon === 'newsletter' && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h3.375c.621 0 1.125.504 1.125 1.125V18a2.25 2.25 0 01-2.25 2.25M16.5 7.5V18a2.25 2.25 0 002.25 2.25M16.5 7.5V4.875c0-.621-.504-1.125-1.125-1.125H4.125C3.504 3.75 3 4.254 3 4.875V18a2.25 2.25 0 002.25 2.25h13.5M6 7.5h3v3H6v-3z" /></svg>}
+        {icon === 'slides' && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h12A2.25 2.25 0 0120.25 6v12A2.25 2.25 0 0118 20.25H6A2.25 2.25 0 013.75 18V6zM9 16.5h6" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 12h.008v.008H12V12z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9h-7.5" /></svg>}
+        {icon === 'domo' && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>}
     </button>
 );
 
