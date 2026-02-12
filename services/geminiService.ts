@@ -277,9 +277,9 @@ export const generateWriting = async (
   // Model fallback chain with timeouts (especially important for YouTube videos)
   const hasYouTube = youtubeAssets.length > 0;
   const models = [
-    { id: 'gemini-3-flash-preview', timeout: hasYouTube ? 60000 : 120000 },
-    { id: 'gemini-2.5-flash-preview-04-17', timeout: hasYouTube ? 90000 : 120000 },
-    { id: 'gemini-2.0-flash-exp', timeout: 120000 },
+    { id: 'gemini-3-flash-preview', timeout: hasYouTube ? 120000 : 120000 },    // 2 min
+    { id: 'gemini-2.5-flash-preview-04-17', timeout: hasYouTube ? 180000 : 120000 }, // 3 min for video
+    { id: 'gemini-2.0-flash-exp', timeout: hasYouTube ? 240000 : 120000 },       // 4 min last resort
   ];
 
   for (let attempt = 0; attempt < models.length; attempt++) {
