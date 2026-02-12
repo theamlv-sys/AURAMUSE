@@ -77,8 +77,11 @@ const CreativeSuite: React.FC<CreativeSuiteProps> = ({ userTier, theme, projectT
     const [slLoading, setSlLoading] = useState(false);
     const [slImages, setSlImages] = useState<Record<number, string>>({});
 
-    // --- PREVIEW MODAL ---
-    const [showPreview, setShowPreview] = useState(false);
+    // --- PREVIEW MODALS ---
+    const [showNlPreview, setShowNlPreview] = useState(false);
+    const [showSlPreview, setShowSlPreview] = useState(false);
+    const [activeSlideIndex, setActiveSlideIndex] = useState(0);
+    const [generatingBgIndex, setGeneratingBgIndex] = useState<number | null>(null);
 
     // --- STYLES ---
     const cardBg = isDark ? 'bg-gray-800/60 border-gray-700' : 'bg-gray-50 border-gray-200';
@@ -105,6 +108,7 @@ const CreativeSuite: React.FC<CreativeSuiteProps> = ({ userTier, theme, projectT
         try {
             const content = await generateNewsletterContent(nlTopic, nlType, nlStyle, nlNotes);
             setNlContent(content);
+            setShowNlPreview(true); // Auto-open newsletter preview
             // Send formatted text to editor
             const editorText = `# ${content.title}\n\n*${content.subtitle}*\n\n` +
                 content.sections.map((s: any) => {
@@ -139,6 +143,8 @@ const CreativeSuite: React.FC<CreativeSuiteProps> = ({ userTier, theme, projectT
         try {
             const deck = await generateSlideContent(slTopic, slCount, slStyle, slNotes);
             setSlDeck(deck);
+            setActiveSlideIndex(0);
+            setShowSlPreview(true); // Auto-open slides viewer
             // Send slide content as formatted text to editor
             const editorText = `# ${deck.title}\n\n` +
                 deck.slides.map((s: any, i: number) =>
@@ -151,12 +157,14 @@ const CreativeSuite: React.FC<CreativeSuiteProps> = ({ userTier, theme, projectT
 
     const handleGenerateSlideImage = async (index: number) => {
         if (!slDeck) return;
+        setGeneratingBgIndex(index);
         const slide = slDeck.slides[index];
         try {
             const prompt = `Create a professional, clean, abstract background image for a presentation slide about: "${slide.title}". Style: ${slStyle}. The image should be suitable as a slide background — no text. Aspect ratio 16:9.`;
             const imageUrl = await generateStoryboardImage(prompt, userTier, '16:9');
             setSlImages(prev => ({ ...prev, [index]: imageUrl }));
         } catch (e) { console.error('Slide image error', e); }
+        setGeneratingBgIndex(null);
     };
 
     const handleExportPPTX = () => {
@@ -308,10 +316,10 @@ const CreativeSuite: React.FC<CreativeSuiteProps> = ({ userTier, theme, projectT
                             key={tab.id}
                             onClick={() => { if (!tab.locked) setActiveTab(tab.id); }}
                             className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${activeTab === tab.id
-                                    ? 'bg-amber-600 text-white shadow'
-                                    : tab.locked
-                                        ? `${isDark ? 'text-gray-600' : 'text-gray-400'} cursor-not-allowed`
-                                        : `${isDark ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-800'}`
+                                ? 'bg-amber-600 text-white shadow'
+                                : tab.locked
+                                    ? `${isDark ? 'text-gray-600' : 'text-gray-400'} cursor-not-allowed`
+                                    : `${isDark ? 'text-gray-400 hover:text-gray-200' : 'text-gray-500 hover:text-gray-800'}`
                                 }`}
                         >
                             {tab.label} {tab.locked && '🔒'}
@@ -416,7 +424,7 @@ const CreativeSuite: React.FC<CreativeSuiteProps> = ({ userTier, theme, projectT
                         {nlContent && (
                             <div className="space-y-2">
                                 <div className="flex gap-2">
-                                    <button onClick={() => setShowPreview(true)} className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs border font-medium ${isDark ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-100'}`}>👁️ Styled Preview</button>
+                                    <button onClick={() => setShowNlPreview(true)} className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs border font-medium ${isDark ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-100'}`}>👁️ Styled Preview</button>
                                     <button onClick={handleExportNewsletterPDF} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs bg-amber-600 text-white hover:bg-amber-500 font-medium">📄 Export PDF</button>
                                 </div>
                                 <button onClick={() => { if (nlPreviewRef.current) navigator.clipboard.writeText(nlPreviewRef.current.outerHTML); }} className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs border font-medium ${isDark ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-100'}`}>📋 Copy HTML</button>
@@ -463,16 +471,7 @@ const CreativeSuite: React.FC<CreativeSuiteProps> = ({ userTier, theme, projectT
                         {slDeck && (
                             <div className="space-y-2">
                                 <div className={`text-xs font-medium ${textMuted}`}>{slDeck.slides.length} slides generated</div>
-                                {/* Slide thumbnails */}
-                                <div className="space-y-1 max-h-[200px] overflow-y-auto">
-                                    {slDeck.slides.map((slide: any, idx: number) => (
-                                        <div key={idx} className={`flex items-center gap-2 p-2 rounded-lg text-xs ${isDark ? 'bg-gray-800/50 hover:bg-gray-800' : 'bg-gray-50 hover:bg-gray-100'} transition-colors cursor-pointer`} onClick={() => handleGenerateSlideImage(idx)}>
-                                            <span className={`w-5 h-5 flex items-center justify-center rounded text-[10px] font-bold ${isDark ? 'bg-gray-700' : 'bg-gray-200'}`}>{idx + 1}</span>
-                                            <span className="flex-1 truncate">{slide.title}</span>
-                                            {slImages[idx] ? <span className="text-green-500">✓</span> : <span className={textMuted}>🖼️</span>}
-                                        </div>
-                                    ))}
-                                </div>
+                                <button onClick={() => { setActiveSlideIndex(0); setShowSlPreview(true); }} className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs border font-medium ${isDark ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-100'}`}>👁️ Open Slide Viewer</button>
                                 <div className="flex gap-2">
                                     <button onClick={handleExportPPTX} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs bg-blue-600 text-white hover:bg-blue-500 font-medium">📊 .pptx</button>
                                     <button onClick={handleExportSlidesPDF} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs bg-amber-600 text-white hover:bg-amber-500 font-medium">📄 PDF</button>
@@ -484,16 +483,158 @@ const CreativeSuite: React.FC<CreativeSuiteProps> = ({ userTier, theme, projectT
             </div>
 
             {/* NEWSLETTER PREVIEW MODAL */}
-            {showPreview && nlContent && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowPreview(false)}>
-                    <div className="max-w-[720px] max-h-[90vh] overflow-y-auto rounded-2xl shadow-2xl" onClick={e => e.stopPropagation()}>
-                        <div className="sticky top-0 z-10 flex justify-end p-2">
-                            <button onClick={() => setShowPreview(false)} className="p-1.5 rounded-lg bg-black/50 text-white hover:bg-black/70 text-sm">✕ Close</button>
+            {showNlPreview && nlContent && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setShowNlPreview(false)}>
+                    <div className="max-w-[720px] w-full max-h-[90vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()} style={{ background: isDark ? '#1a1a2e' : '#fff' }}>
+                        {/* Header bar */}
+                        <div className={`flex items-center justify-between px-4 py-3 border-b ${isDark ? 'border-gray-700 bg-gray-900' : 'border-gray-200 bg-gray-50'}`}>
+                            <h3 className="text-sm font-bold flex items-center gap-2"><span>📧</span> Newsletter Preview</h3>
+                            <div className="flex items-center gap-2">
+                                <button onClick={handleExportNewsletterPDF} className="px-3 py-1.5 rounded-lg text-xs bg-amber-600 text-white hover:bg-amber-500 font-medium">📄 Export PDF</button>
+                                <button onClick={() => { if (nlPreviewRef.current) navigator.clipboard.writeText(nlPreviewRef.current.outerHTML); }} className={`px-3 py-1.5 rounded-lg text-xs border font-medium ${isDark ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-100'}`}>📋 HTML</button>
+                                <button onClick={() => setShowNlPreview(false)} className="p-1.5 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-sm">✕</button>
+                            </div>
                         </div>
-                        {renderNewsletterPreview()}
+                        {/* Scrollable preview */}
+                        <div className="flex-1 overflow-y-auto p-6">
+                            {renderNewsletterPreview()}
+                        </div>
                     </div>
                 </div>
             )}
+
+            {/* SLIDES VIEWER MODAL */}
+            {showSlPreview && slDeck && (() => {
+                const slide = slDeck.slides[activeSlideIndex];
+                const themeColors = SLIDE_THEMES[slStyle] || SLIDE_THEMES.professional;
+                const hasImg = !!slImages[activeSlideIndex];
+                const isTitle = slide.layout === 'title' || slide.layout === 'section_break';
+                const isQuote = slide.layout === 'quote';
+                const slideBg = hasImg ? `url(${slImages[activeSlideIndex]}) center/cover` :
+                    (isTitle ? themeColors.gradientFrom : themeColors.bg);
+
+                return (
+                    <div className="fixed inset-0 z-50 flex flex-col bg-black/80 backdrop-blur-sm" onClick={() => setShowSlPreview(false)}>
+                        {/* Top bar */}
+                        <div className="flex items-center justify-between px-6 py-3 bg-black/50 text-white shrink-0" onClick={e => e.stopPropagation()}>
+                            <h3 className="text-sm font-bold flex items-center gap-2"><span>📊</span> {slDeck.title}</h3>
+                            <div className="flex items-center gap-3">
+                                <span className="text-xs text-gray-400">Slide {activeSlideIndex + 1} of {slDeck.slides.length}</span>
+                                <button onClick={handleExportPPTX} className="px-3 py-1.5 rounded-lg text-xs bg-blue-600 text-white hover:bg-blue-500 font-medium">📊 .pptx</button>
+                                <button onClick={handleExportSlidesPDF} className="px-3 py-1.5 rounded-lg text-xs bg-amber-600 text-white hover:bg-amber-500 font-medium">📄 PDF</button>
+                                <button onClick={() => setShowSlPreview(false)} className="p-1.5 rounded-lg hover:bg-white/20 text-sm">✕</button>
+                            </div>
+                        </div>
+
+                        {/* Main slide area */}
+                        <div className="flex-1 flex items-center justify-center px-16 py-6 relative" onClick={e => e.stopPropagation()}>
+                            {/* Prev arrow */}
+                            <button
+                                onClick={() => setActiveSlideIndex(i => Math.max(0, i - 1))}
+                                disabled={activeSlideIndex === 0}
+                                className="absolute left-4 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white disabled:opacity-20 transition-all"
+                            >
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                            </button>
+
+                            {/* Slide canvas 16:9 */}
+                            <div
+                                className="relative rounded-xl shadow-2xl overflow-hidden"
+                                style={{
+                                    width: '100%', maxWidth: '900px', aspectRatio: '16/9',
+                                    background: slideBg, border: '1px solid rgba(255,255,255,0.1)'
+                                }}
+                            >
+                                {/* Dark overlay for background images */}
+                                {hasImg && <div className="absolute inset-0 bg-black/45" />}
+
+                                {/* Slide content */}
+                                <div className="relative z-10 flex flex-col justify-center h-full p-12">
+                                    {isTitle ? (
+                                        <div className="text-center">
+                                            <h1 className="text-4xl font-bold text-white mb-4">{slide.title}</h1>
+                                            {slide.bullets?.[0] && <p className="text-lg text-gray-300">{slide.bullets[0]}</p>}
+                                        </div>
+                                    ) : isQuote ? (
+                                        <div className="text-center">
+                                            <p className="text-3xl italic" style={{ color: hasImg ? '#fff' : themeColors.title }}>"{slide.bullets?.[0] || ''}"</p>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <h2 className="text-3xl font-bold mb-2" style={{ color: hasImg ? '#fff' : themeColors.title }}>{slide.title}</h2>
+                                            <div className="mb-6" style={{ width: '60px', height: '3px', background: themeColors.accent }} />
+                                            <ul className="space-y-3 list-disc pl-6">
+                                                {(slide.bullets || []).map((b: string, j: number) => (
+                                                    <li key={j} className="text-lg" style={{ color: hasImg ? '#e0e0e0' : themeColors.text }}>{b}</li>
+                                                ))}
+                                            </ul>
+                                        </>
+                                    )}
+                                </div>
+
+                                {/* Add Background button overlay */}
+                                <div className="absolute bottom-3 right-3 z-20">
+                                    <button
+                                        onClick={() => handleGenerateSlideImage(activeSlideIndex)}
+                                        disabled={generatingBgIndex === activeSlideIndex}
+                                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium bg-black/60 hover:bg-black/80 text-white border border-white/20 transition-all disabled:opacity-50"
+                                    >
+                                        {generatingBgIndex === activeSlideIndex ? (
+                                            <><div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Generating...</>
+                                        ) : hasImg ? (
+                                            <>🔄 Change Background</>
+                                        ) : (
+                                            <>🖼️ Add Background</>
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Next arrow */}
+                            <button
+                                onClick={() => setActiveSlideIndex(i => Math.min(slDeck!.slides.length - 1, i + 1))}
+                                disabled={activeSlideIndex === slDeck.slides.length - 1}
+                                className="absolute right-4 p-3 rounded-full bg-white/10 hover:bg-white/20 text-white disabled:opacity-20 transition-all"
+                            >
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                            </button>
+                        </div>
+
+                        {/* Speaker notes */}
+                        {slide.notes && (
+                            <div className="mx-auto max-w-[900px] w-full px-6 pb-2" onClick={e => e.stopPropagation()}>
+                                <div className="bg-white/5 rounded-lg p-3 text-xs text-gray-400 italic">📝 {slide.notes}</div>
+                            </div>
+                        )}
+
+                        {/* Thumbnail strip */}
+                        <div className="shrink-0 px-6 py-3 bg-black/50 overflow-x-auto" onClick={e => e.stopPropagation()}>
+                            <div className="flex gap-2 justify-center">
+                                {slDeck.slides.map((s: any, idx: number) => {
+                                    const thumbTheme = SLIDE_THEMES[slStyle] || SLIDE_THEMES.professional;
+                                    const thumbIsTitle = s.layout === 'title' || s.layout === 'section_break';
+                                    const thumbBg = slImages[idx] ? `url(${slImages[idx]}) center/cover` :
+                                        (thumbIsTitle ? thumbTheme.gradientFrom : thumbTheme.bg);
+                                    return (
+                                        <button
+                                            key={idx}
+                                            onClick={() => setActiveSlideIndex(idx)}
+                                            className={`relative shrink-0 rounded-md overflow-hidden transition-all ${activeSlideIndex === idx ? 'ring-2 ring-amber-500 scale-105' : 'ring-1 ring-white/10 opacity-60 hover:opacity-100'}`}
+                                            style={{ width: '80px', height: '45px', background: thumbBg }}
+                                        >
+                                            {slImages[idx] && <div className="absolute inset-0 bg-black/40" />}
+                                            <div className="absolute inset-0 flex items-center justify-center">
+                                                <span className="text-[9px] font-bold text-white truncate px-1" style={{ textShadow: '0 1px 2px rgba(0,0,0,0.8)' }}>{idx + 1}</span>
+                                            </div>
+                                            {slImages[idx] && <span className="absolute top-0.5 right-0.5 text-[8px] text-green-400">✓</span>}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
         </div>
     );
 };
