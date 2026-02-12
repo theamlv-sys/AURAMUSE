@@ -21,7 +21,7 @@ You are an expert in all formats:
 - Social Media: Viral hooks, engagement loops, platform-specific formatting (Threads, TikTok, LinkedIn), trend-aware.
 
 When analyzing media (images/videos/PDFs), deeply interpret the content to fuel your writing.
-If the user provides a YouTube link, use Google Search to find information about it if you don't know it.
+If the user provides a YouTube link, it will be attached as a native video input. You are WATCHING the video — analyze the actual visual content, on-screen text, audio, spoken words, and scene changes directly. Provide insights based on what you see and hear, not just metadata or transcripts.
 
 You have access to the user's current editor content.
 CRITICAL INSTRUCTIONS FOR EDITOR MANIPULATION:
@@ -209,10 +209,28 @@ export const generateWriting = async (
     }
   }
 
-  // Handle Links by appending to prompt
+  // Separate YouTube links from regular web links
+  const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)/i;
+  const youtubeAssets = linkAssets.filter(a => a.url && youtubeRegex.test(a.url));
+  const nonYoutubeLinks = linkAssets.filter(a => a.url && !youtubeRegex.test(a.url));
+
+  // Pass YouTube URLs as native file_data parts so Gemini WATCHES the video (audio + visual frames)
+  for (const yt of youtubeAssets) {
+    parts.push({
+      fileData: {
+        mimeType: 'video/*',
+        fileUri: yt.url,
+      }
+    });
+  }
+
+  // Handle non-YouTube links by appending to prompt for Google Search
   let augmentedPrompt = prompt;
-  if (linkAssets.length > 0) {
-    augmentedPrompt += `\n\n[CONTEXT LINKS]:\nThe user has provided the following external links. Use Google Search to retrieve their context/content if necessary:\n` + linkAssets.map(a => `- ${a.url}`).join('\n');
+  if (nonYoutubeLinks.length > 0) {
+    augmentedPrompt += `\n\n[CONTEXT LINKS]:\nThe user has provided the following external links. Use Google Search to retrieve their context/content if necessary:\n` + nonYoutubeLinks.map(a => `- ${a.url}`).join('\n');
+  }
+  if (youtubeAssets.length > 0) {
+    augmentedPrompt += `\n\n[YOUTUBE VIDEOS ATTACHED]: ${youtubeAssets.length} YouTube video(s) have been attached above as native video input. You are WATCHING these videos — analyze the actual visual content, audio, and spoken words directly. Do NOT just summarize from metadata or transcripts. Describe what you actually see and hear.`;
   }
 
   // Add text prompt
@@ -238,8 +256,8 @@ export const generateWriting = async (
   const tools: Tool[] = [];
 
   // CRITICAL: gemini-3-flash-preview requires googleSearch to be the ONLY tool if used.
-  // If useSearch is true OR we have links (implying need for search), we enable googleSearch and DISABLE editor tools.
-  const shouldEnableSearch = useSearch || linkAssets.length > 0;
+  // Only enable search for explicit search requests or non-YouTube links (YouTube uses native file_data).
+  const shouldEnableSearch = useSearch || nonYoutubeLinks.length > 0;
 
   if (shouldEnableSearch) {
     tools.push({ googleSearch: {} });
