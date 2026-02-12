@@ -294,10 +294,20 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           ))}
           {isLoading && (
             <div className="flex justify-start">
-              <div className={`${isDark ? 'bg-gray-800 text-gray-400' : 'bg-white text-gray-500 border border-gray-100 shadow-sm'} rounded-2xl rounded-bl-none p-4 text-sm flex items-center gap-2`}>
-                <div className="w-1.5 h-1.5 bg-muse-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                <div className="w-1.5 h-1.5 bg-muse-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                <div className="w-1.5 h-1.5 bg-muse-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+              <div className={`${isDark ? 'bg-gray-800 text-gray-400' : 'bg-white text-gray-500 border border-gray-100 shadow-sm'} rounded-2xl rounded-bl-none p-4 text-sm`}>
+                {/* Check if last user message has a YouTube link */}
+                {messages.length > 0 && /youtu\.?be/i.test(messages[messages.length - 1]?.content || '') ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                    <span className="text-xs">📹 Processing video — this can take a few minutes for longer videos. Please be patient...</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 bg-muse-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                    <div className="w-1.5 h-1.5 bg-muse-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                    <div className="w-1.5 h-1.5 bg-muse-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                  </div>
+                )}
               </div>
             </div>
           )}

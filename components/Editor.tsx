@@ -95,10 +95,12 @@ const Editor: React.FC<EditorProps> = ({ content, onChange, title, onTitleChange
                 lineHeight: '1.6'
             });
 
+            // XSS protection for user-supplied title
+            const safeTitle = (title || 'Untitled Project').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
             page.innerHTML = `
           <div style="color: #000000 !important; background: #ffffff !important;">
             <h1 style="text-align: center; margin-bottom: 30px; font-size: 24pt; font-weight: bold; border-bottom: 2px solid #000; padding-bottom: 15px; color: #000; line-height: 1.2;">
-                ${title || 'Untitled Project'}
+                ${safeTitle}
             </h1>
             <div class="pdf-content" style="text-align: left; color: #000;">
                 ${htmlContent}
