@@ -237,6 +237,14 @@ const App: React.FC = () => {
 
     // --- NAVIGATION HELPERS ---
     const handleNavigate = (mode: ViewMode) => {
+        if (mode === 'CREATIVE_SUITE') {
+            // Route Domo Suite into the EDITOR layout with full workspace access
+            setProjectType(ProjectType.PODCAST);
+            setViewMode('EDITOR');
+            setShowRightPanel(true);
+            setActiveTab('chat');
+            return;
+        }
         if (mode === 'LEGAL_PRIVACY' || mode === 'LEGAL_TERMS') {
             navigateToView(mode);
         } else {
@@ -244,6 +252,9 @@ const App: React.FC = () => {
             if (mode !== 'EDITOR') setProjectType(null);
         }
     };
+
+    // Helper: check if current project type is a Domo Suite type
+    const isDomoSuiteType = projectType === ProjectType.PODCAST || projectType === ProjectType.NEWSLETTER || projectType === ProjectType.SLIDES;
 
     const handleProjectSelect = (type: ProjectType) => {
         if ((type as any) === 'NOTES') {
@@ -442,13 +453,7 @@ const App: React.FC = () => {
         />;
     }
 
-    if (viewMode === 'CREATIVE_SUITE') {
-        return <CreativeSuite
-            onBack={() => setViewMode('HOME')}
-            userTier={userTier}
-            theme={theme}
-        />;
-    }
+    // CREATIVE_SUITE is now routed through EDITOR view — no standalone block needed
 
     if (viewMode !== 'EDITOR') {
         return (
@@ -513,57 +518,67 @@ const App: React.FC = () => {
 
             <div className="flex-1 flex overflow-hidden relative">
                 <div className="flex-1 w-full h-full overflow-hidden">
-                    <Editor
-                        content={content}
-                        onChange={setContent}
-                        title={title}
-                        onTitleChange={setTitle}
-                        projectType={projectType!}
-                        versionHistory={currentVersionHistory}
-                        onSnapshot={handleSnapshot}
-                        onRestoreVersion={setContent}
-                        onDeleteSnapshot={(id) => setVersionHistory(p => p.filter(v => v.id !== id))}
-                        onSave={handleSaveProject}
-                        theme={theme}
-                        onExportGoogleDoc={async (t, c) => {
-                            if (userTier !== 'SHOWRUNNER') {
-                                alert("Google Drive export is a Showrunner feature.");
-                                setShowSubModal(true);
-                                return;
-                            }
-                            const { data: { session } } = await supabase.auth.getSession();
-                            if (session?.provider_token) {
-                                await googleDriveService.createDoc(session.provider_token, t, c);
-                                alert("Successfully exported to Google Docs!");
-                            } else {
-                                if (confirm("You are not connected to Google. Would you like to connect now to enable exporting?")) {
-                                    const { error } = await supabase.auth.signInWithOAuth({
-                                        provider: 'google',
-                                        options: {
-                                            scopes: 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive.file',
-                                            redirectTo: window.location.origin
-                                        }
-                                    });
-                                    if (error) alert(error.message);
+                    {isDomoSuiteType ? (
+                        <CreativeSuite
+                            userTier={userTier}
+                            theme={theme}
+                            projectType={projectType!}
+                            editorContent={content}
+                            onChange={setContent}
+                        />
+                    ) : (
+                        <Editor
+                            content={content}
+                            onChange={setContent}
+                            title={title}
+                            onTitleChange={setTitle}
+                            projectType={projectType!}
+                            versionHistory={currentVersionHistory}
+                            onSnapshot={handleSnapshot}
+                            onRestoreVersion={setContent}
+                            onDeleteSnapshot={(id) => setVersionHistory(p => p.filter(v => v.id !== id))}
+                            onSave={handleSaveProject}
+                            theme={theme}
+                            onExportGoogleDoc={async (t, c) => {
+                                if (userTier !== 'SHOWRUNNER') {
+                                    alert("Google Drive export is a Showrunner feature.");
+                                    setShowSubModal(true);
+                                    return;
                                 }
-                            }
-                        }}
-                        onUploadToDrive={async (t, c) => {
-                            if (userTier !== 'SHOWRUNNER') {
-                                alert("Google Drive export is a Showrunner feature.");
-                                setShowSubModal(true);
-                                return;
-                            }
-                            const { data: { session } } = await supabase.auth.getSession();
-                            if (session?.provider_token) {
-                                await googleDriveService.uploadFile(session.provider_token, t, c, 'text/plain');
-                            } else {
-                                alert("Please sign in again");
-                            }
-                        }}
-                        isGmailConnected={isGmailConnected}
-                        userTier={userTier}
-                    />
+                                const { data: { session } } = await supabase.auth.getSession();
+                                if (session?.provider_token) {
+                                    await googleDriveService.createDoc(session.provider_token, t, c);
+                                    alert("Successfully exported to Google Docs!");
+                                } else {
+                                    if (confirm("You are not connected to Google. Would you like to connect now to enable exporting?")) {
+                                        const { error } = await supabase.auth.signInWithOAuth({
+                                            provider: 'google',
+                                            options: {
+                                                scopes: 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive.file',
+                                                redirectTo: window.location.origin
+                                            }
+                                        });
+                                        if (error) alert(error.message);
+                                    }
+                                }
+                            }}
+                            onUploadToDrive={async (t, c) => {
+                                if (userTier !== 'SHOWRUNNER') {
+                                    alert("Google Drive export is a Showrunner feature.");
+                                    setShowSubModal(true);
+                                    return;
+                                }
+                                const { data: { session } } = await supabase.auth.getSession();
+                                if (session?.provider_token) {
+                                    await googleDriveService.uploadFile(session.provider_token, t, c, 'text/plain');
+                                } else {
+                                    alert("Please sign in again");
+                                }
+                            }}
+                            isGmailConnected={isGmailConnected}
+                            userTier={userTier}
+                        />
+                    )}
                 </div>
 
                 <div className={`fixed inset-0 z-40 md:static md:z-0 transition-all duration-300 border-l ${theme === 'dark' ? 'border-gray-800 bg-gray-900' : 'bg-white'} flex flex-col ${showRightPanel ? 'translate-x-0 w-full md:w-[450px]' : 'translate-x-full md:w-0'}`}>

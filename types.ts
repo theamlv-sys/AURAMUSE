@@ -14,7 +14,9 @@ export enum ProjectType {
     GENERAL = 'GENERAL',
     NOTES = 'NOTES',
     CALENDAR = 'CALENDAR',
-    PODCAST = 'PODCAST'
+    PODCAST = 'PODCAST',
+    NEWSLETTER = 'NEWSLETTER',
+    SLIDES = 'SLIDES'
 }
 
 export interface Project {

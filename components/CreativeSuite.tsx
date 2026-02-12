@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { SubscriptionTier, TIERS } from '../types';
+import React, { useState, useRef, useEffect } from 'react';
+import { SubscriptionTier, TIERS, ProjectType } from '../types';
 import { generatePodcastScript, generateNewsletterContent, generateSlideContent, generateStoryboardImage } from '../services/geminiService';
 
 // Declare pptxgenjs global
@@ -7,10 +7,17 @@ declare const PptxGenJS: any;
 declare const html2pdf: any;
 
 interface CreativeSuiteProps {
-    onBack: () => void;
     userTier: SubscriptionTier;
     theme: string;
+    projectType?: ProjectType;
+    editorContent?: string;
+    onChange?: (content: string) => void;
 }
+
+// XSS protection: sanitize AI-generated text before innerHTML insertion
+const escapeHtml = (str: string): string =>
+    str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 
 type SuiteTab = 'podcast' | 'newsletter' | 'slides';
 
@@ -43,10 +50,20 @@ const NL_THEMES: Record<string, { headerBg: string; headerText: string; bodyBg: 
     bold: { headerBg: 'linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)', headerText: '#fff', bodyBg: '#fffbeb', bodyText: '#1f2937', accent: '#f59e0b', fontFamily: "'Outfit', sans-serif", statBg: '#ef4444', quoteBorder: '#f59e0b', calloutBg: '#fef3c7', ctaBg: 'linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)', ctaText: '#fff' },
 };
 
-const CreativeSuite: React.FC<CreativeSuiteProps> = ({ onBack, userTier, theme }) => {
-    const [activeTab, setActiveTab] = useState<SuiteTab>('podcast');
+const CreativeSuite: React.FC<CreativeSuiteProps> = ({ userTier, theme, projectType, editorContent, onChange }) => {
+    const getDefaultTab = (): SuiteTab => {
+        if (projectType === ProjectType.NEWSLETTER) return 'newsletter';
+        if (projectType === ProjectType.SLIDES) return 'slides';
+        return 'podcast';
+    };
+    const [activeTab, setActiveTab] = useState<SuiteTab>(getDefaultTab());
     const limits = TIERS[userTier].limits;
     const isDark = theme === 'dark';
+
+    // Sync tab when projectType changes from parent
+    useEffect(() => {
+        setActiveTab(getDefaultTab());
+    }, [projectType]);
 
     // --- PODCAST STATE ---
     const [podTopic, setPodTopic] = useState('');
@@ -85,6 +102,8 @@ const CreativeSuite: React.FC<CreativeSuiteProps> = ({ onBack, userTier, theme }
         try {
             const script = await generatePodcastScript(podTopic, podFormat, podDuration, podStyle, podNotes);
             setPodScript(script);
+            // Sync to parent so Muse assistant and Audio Studio can use the script
+            if (onChange) onChange(script);
         } catch (e) { setPodScript('Error generating script.'); }
         setPodLoading(false);
     };
@@ -101,10 +120,10 @@ const CreativeSuite: React.FC<CreativeSuiteProps> = ({ onBack, userTier, theme }
         el.style.color = '#222';
         el.style.maxWidth = '700px';
         el.innerHTML = `
-            <h1 style="font-size:24px;margin-bottom:4px;color:#1a1a2e;">🎙️ ${podTopic}</h1>
-            <p style="color:#888;font-size:12px;margin-bottom:20px;">${podFormat.replace('_', ' ').toUpperCase()} • ${podDuration} • ${podStyle}</p>
+            <h1 style="font-size:24px;margin-bottom:4px;color:#1a1a2e;">🎙️ ${escapeHtml(podTopic)}</h1>
+            <p style="color:#888;font-size:12px;margin-bottom:20px;">${escapeHtml(podFormat.replace('_', ' ').toUpperCase())} • ${escapeHtml(podDuration)} • ${escapeHtml(podStyle)}</p>
             <hr style="border:1px solid #eee;margin-bottom:20px;">
-            <div style="white-space:pre-wrap;line-height:1.8;font-size:14px;">${podScript.replace(/\n/g, '<br>')}</div>
+            <div style="white-space:pre-wrap;line-height:1.8;font-size:14px;">${escapeHtml(podScript).replace(/\n/g, '<br>')}</div>
         `;
         document.body.appendChild(el);
         html2pdf().set({ margin: 0.5, filename: `${podTopic.slice(0, 40)}-script.pdf`, html2canvas: { scale: 2 }, jsPDF: { unit: 'in', format: 'letter' } }).from(el).save().then(() => document.body.removeChild(el));
@@ -240,14 +259,14 @@ const CreativeSuite: React.FC<CreativeSuiteProps> = ({ onBack, userTier, theme }
 
             if (slide.layout === 'title' || slide.layout === 'section_break') {
                 if (!hasImg) slideEl.style.background = themeColors.gradientFrom;
-                content.innerHTML = `<h1 style="font-size:36px;color:#fff;text-align:center;margin:0;">${slide.title}</h1>${slide.bullets?.length ? `<p style="font-size:18px;color:#ccc;text-align:center;margin-top:16px;">${slide.bullets[0]}</p>` : ''}`;
+                content.innerHTML = `<h1 style="font-size:36px;color:#fff;text-align:center;margin:0;">${escapeHtml(slide.title)}</h1>${slide.bullets?.length ? `<p style="font-size:18px;color:#ccc;text-align:center;margin-top:16px;">${escapeHtml(slide.bullets[0])}</p>` : ''}`;
             } else if (slide.layout === 'quote') {
                 slideEl.style.background = hasImg ? '' : themeColors.bg;
-                content.innerHTML = `<p style="font-size:24px;color:${hasImg ? '#fff' : themeColors.title};font-style:italic;text-align:center;">"${slide.bullets?.[0] || ''}"</p>`;
+                content.innerHTML = `<p style="font-size:24px;color:${hasImg ? '#fff' : themeColors.title};font-style:italic;text-align:center;">"${escapeHtml(slide.bullets?.[0] || '')}"</p>`;
             } else {
                 if (!hasImg) slideEl.style.background = themeColors.bg;
-                const bulletItems = (slide.bullets || []).map((b: string) => `<li style="margin-bottom:8px;font-size:16px;color:${hasImg ? '#e0e0e0' : themeColors.text};">${b}</li>`).join('');
-                content.innerHTML = `<h2 style="font-size:28px;color:${hasImg ? '#fff' : themeColors.title};margin:0 0 12px 0;">${slide.title}</h2><div style="width:60px;height:3px;background:${themeColors.accent};margin-bottom:20px;"></div><ul style="list-style:disc;padding-left:20px;">${bulletItems}</ul>`;
+                const bulletItems = (slide.bullets || []).map((b: string) => `<li style="margin-bottom:8px;font-size:16px;color:${hasImg ? '#e0e0e0' : themeColors.text};">${escapeHtml(b)}</li>`).join('');
+                content.innerHTML = `<h2 style="font-size:28px;color:${hasImg ? '#fff' : themeColors.title};margin:0 0 12px 0;">${escapeHtml(slide.title)}</h2><div style="width:60px;height:3px;background:${themeColors.accent};margin-bottom:20px;"></div><ul style="list-style:disc;padding-left:20px;">${bulletItems}</ul>`;
             }
             slideEl.appendChild(content);
             el.appendChild(slideEl);
@@ -378,17 +397,16 @@ const CreativeSuite: React.FC<CreativeSuiteProps> = ({ onBack, userTier, theme }
     const textMuted = isDark ? 'text-gray-400' : 'text-gray-500';
 
     return (
-        <div className={`fixed inset-0 z-50 flex flex-col ${isDark ? 'bg-gray-950 text-gray-200' : 'bg-gray-100 text-gray-900'}`}>
+        <div className={`flex flex-col h-full w-full overflow-hidden ${isDark ? 'bg-gray-950 text-gray-200' : 'bg-gray-50 text-gray-900'}`}>
             {/* HEADER */}
-            <div className={`flex items-center justify-between px-6 py-3 border-b ${isDark ? 'border-gray-800 bg-gray-900/80' : 'border-gray-200 bg-white/80'} backdrop-blur-md`}>
+            <div className={`flex items-center justify-between px-6 py-3 border-b ${isDark ? 'border-gray-800 bg-gray-900/80' : 'border-gray-200 bg-white/80'} backdrop-blur-md shrink-0`}>
                 <div className="flex items-center gap-3">
-                    <button onClick={onBack} className={`p-2 rounded-lg hover:bg-gray-700/50 ${textMuted}`}><ChevronLeftIcon /></button>
                     <div>
                         <h1 className="text-lg font-bold font-serif tracking-wide" style={{ color: isDark ? '#f59e0b' : '#b45309' }}>Domo Suite</h1>
                         <p className={`text-xs ${textMuted}`}>Podcast Scripts • Newsletters & Ebooks • Slide Decks</p>
                     </div>
                 </div>
-                <div className="flex gap-1 bg-gray-800/40 p-1 rounded-xl">
+                <div className={`flex gap-1 ${isDark ? 'bg-gray-800/40' : 'bg-gray-200/60'} p-1 rounded-xl`}>
                     {[
                         { id: 'podcast' as SuiteTab, label: 'Talking Head / Podcast', icon: <MicIcon />, locked: false },
                         { id: 'newsletter' as SuiteTab, label: 'Newsletter / Ebook', icon: <BookIcon />, locked: !limits.hasNewsletterEbook },
