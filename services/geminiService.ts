@@ -266,70 +266,108 @@ export const generateWriting = async (
     tools.push({ functionDeclarations: [updateEditorTool, appendEditorTool] });
   }
 
-  try {
-    const chat = ai.chats.create({
-      model: modelId,
-      config: {
-        systemInstruction: augmentedSystemInstruction,
-        tools: tools,
-      },
-      history: history.map(h => ({
-        role: h.role,
-        parts: [{ text: h.content }],
-      })),
-    });
+  // Timeout helper — fail fast instead of hanging forever on long videos
+  const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
+    return Promise.race([
+      promise,
+      new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms / 1000}s`)), ms))
+    ]);
+  };
 
-    const result = await chat.sendMessage({
-      message: parts,
-    });
+  // Model fallback chain with timeouts (especially important for YouTube videos)
+  const hasYouTube = youtubeAssets.length > 0;
+  const models = [
+    { id: 'gemini-3-flash-preview', timeout: hasYouTube ? 60000 : 120000 },
+    { id: 'gemini-2.5-flash-preview-04-17', timeout: hasYouTube ? 90000 : 120000 },
+    { id: 'gemini-2.0-flash-exp', timeout: 120000 },
+  ];
 
-    let editorUpdate: string | undefined;
-    let editorAppend: string | undefined;
-    let responseText = result.text || "";
+  for (let attempt = 0; attempt < models.length; attempt++) {
+    const currentModel = models[attempt];
+    try {
+      if (attempt > 0) {
+        console.warn(`Retrying with fallback model: ${currentModel.id}...`);
+      }
 
-    // Check for function calls (only relevant if search was NOT active)
-    const functionCalls = result.functionCalls;
-    if (functionCalls && functionCalls.length > 0) {
-      for (const call of functionCalls) {
-        if (call.name === "updateEditor") {
-          const args = call.args as any;
-          if (args && args.newContent) {
-            editorUpdate = args.newContent;
-            if (!responseText) {
-              responseText = "I've rewritten the document as requested.";
+      const chat = ai.chats.create({
+        model: currentModel.id,
+        config: {
+          systemInstruction: augmentedSystemInstruction,
+          tools: tools,
+        },
+        history: history.map(h => ({
+          role: h.role,
+          parts: [{ text: h.content }],
+        })),
+      });
+
+      const result = await withTimeout(
+        chat.sendMessage({ message: parts }),
+        currentModel.timeout,
+        `${currentModel.id} video processing`
+      );
+
+      let editorUpdate: string | undefined;
+      let editorAppend: string | undefined;
+      let responseText = result.text || "";
+
+      // Check for function calls (only relevant if search was NOT active)
+      const functionCalls = result.functionCalls;
+      if (functionCalls && functionCalls.length > 0) {
+        for (const call of functionCalls) {
+          if (call.name === "updateEditor") {
+            const args = call.args as any;
+            if (args && args.newContent) {
+              editorUpdate = args.newContent;
+              if (!responseText) {
+                responseText = "I've rewritten the document as requested.";
+              }
             }
-          }
-        } else if (call.name === "appendEditor") {
-          const args = call.args as any;
-          if (args && args.contentToAdd) {
-            editorAppend = args.contentToAdd;
-            if (!responseText) {
-              responseText = "I've added new content to the end of the document.";
+          } else if (call.name === "appendEditor") {
+            const args = call.args as any;
+            if (args && args.contentToAdd) {
+              editorAppend = args.contentToAdd;
+              if (!responseText) {
+                responseText = "I've added new content to the end of the document.";
+              }
             }
           }
         }
       }
-    }
 
-    // Handle Grounding Metadata (Sources)
-    if (result.candidates?.[0]?.groundingMetadata?.groundingChunks) {
-      const chunks = result.candidates[0].groundingMetadata.groundingChunks;
-      const sources = chunks
-        .map((chunk: any) => chunk.web?.uri ? `[${chunk.web.title || 'Source'}](${chunk.web.uri})` : null)
-        .filter(Boolean);
+      // Handle Grounding Metadata (Sources)
+      if (result.candidates?.[0]?.groundingMetadata?.groundingChunks) {
+        const chunks = result.candidates[0].groundingMetadata.groundingChunks;
+        const sources = chunks
+          .map((chunk: any) => chunk.web?.uri ? `[${chunk.web.title || 'Source'}](${chunk.web.uri})` : null)
+          .filter(Boolean);
 
-      if (sources.length > 0) {
-        const uniqueSources = Array.from(new Set(sources));
-        responseText += `\n\n**Sources:**\n${uniqueSources.map(s => `- ${s}`).join('\n')}`;
+        if (sources.length > 0) {
+          const uniqueSources = Array.from(new Set(sources));
+          responseText += `\n\n**Sources:**\n${uniqueSources.map(s => `- ${s}`).join('\n')}`;
+        }
       }
+
+      return { text: responseText, editorUpdate, editorAppend };
+
+    } catch (error: any) {
+      const msg = error?.message || error?.error?.message || String(error);
+      const isRetryable = msg.includes('timed out') || msg.includes('503') || msg.includes('UNAVAILABLE') || msg.includes('429') || msg.includes('overloaded') || msg.includes('too long') || msg.includes('RESOURCE_EXHAUSTED');
+
+      if (isRetryable && attempt < models.length - 1) {
+        console.warn(`Model ${currentModel.id} failed (${msg}), falling back...`);
+        continue;
+      }
+
+      console.error("Gemini Generate Error:", error);
+      const userMsg = msg.includes('timed out')
+        ? `⏱️ This video is too long to process in real-time. Try a shorter clip (under 10 minutes works best), or ask about a specific timestamp range (e.g. "What happens at 5:00-10:00?").`
+        : `Error: ${msg}`;
+      return { text: userMsg };
     }
-
-    return { text: responseText, editorUpdate, editorAppend };
-
-  } catch (error) {
-    console.error("Gemini Generate Error:", error);
-    return { text: `Error: ${error instanceof Error ? error.message : 'Unknown error'}` };
   }
+
+  return { text: "All models failed. Please try again in a moment." };
 };
 
 export const generateVideoPromptFromText = async (text: string): Promise<string> => {
