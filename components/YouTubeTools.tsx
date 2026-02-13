@@ -155,26 +155,33 @@ const YouTubeTools: React.FC<YouTubeToolsProps> = ({ content, userTier, initialT
                 YouTube Studio
             </h2>
 
-            <div className="flex gap-2 mb-6 border-b border-gray-800 pb-2">
-                <button
-                    onClick={() => setActiveTab('seo')}
-                    className={`flex-1 py-3 rounded-lg text-lg font-bold transition-colors ${activeTab === 'seo' ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'}`}
-                >
-                    FULL SEO
-                </button>
-                <button
-                    onClick={() => setActiveTab('thumbnail')}
-                    className={`flex-1 py-3 rounded-lg text-lg font-bold transition-colors ${activeTab === 'thumbnail' ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'}`}
-                >
-                    MAKE THUMBNAIL
-                </button>
-                <button
-                    onClick={() => setActiveTab('research')}
-                    className={`flex-1 py-3 rounded-lg text-lg font-bold transition-colors ${activeTab === 'research' ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'}`}
-                >
-                    RESEARCH
-                </button>
-            </div>
+            {(userTier === 'AUTEUR' || userTier === 'SHOWRUNNER') ? (
+                <div className="flex gap-2 mb-6 border-b border-gray-800 pb-2">
+                    <button
+                        onClick={() => setActiveTab('seo')}
+                        className={`flex-1 py-3 rounded-lg text-lg font-bold transition-colors ${activeTab === 'seo' ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'}`}
+                    >
+                        FULL SEO
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('thumbnail')}
+                        className={`flex-1 py-3 rounded-lg text-lg font-bold transition-colors ${activeTab === 'thumbnail' ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'}`}
+                    >
+                        MAKE THUMBNAIL
+                    </button>
+                    <button
+                        onClick={() => setActiveTab('research')}
+                        className={`flex-1 py-3 rounded-lg text-lg font-bold transition-colors ${activeTab === 'research' ? 'bg-red-600 text-white' : 'bg-gray-800 text-gray-400 hover:text-white hover:bg-gray-700'}`}
+                    >
+                        RESEARCH
+                    </button>
+                </div>
+            ) : (
+                <div className="bg-gray-800/60 border border-yellow-600/30 rounded-xl p-6 mb-6 text-center">
+                    <p className="text-yellow-400 font-bold text-lg mb-2">🔒 Premium Feature</p>
+                    <p className="text-gray-400 text-sm">YouTube Studio tools (SEO, Thumbnails, Research) are available on <span className="text-white font-semibold">Auteur</span> and <span className="text-white font-semibold">Showrunner</span> plans.</p>
+                </div>
+            )}
 
             {loading && (
                 <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50">

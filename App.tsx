@@ -265,11 +265,14 @@ const App: React.FC = () => {
     // --- NAVIGATION HELPERS ---
     const handleNavigate = (mode: ViewMode) => {
         if (mode === 'CREATIVE_SUITE') {
+            // Domo Suite is Auteur & Showrunner only
+            if (userTier !== 'AUTEUR' && userTier !== 'SHOWRUNNER') {
+                alert('Domo Suite is available for Auteur and Showrunner tiers. Please upgrade your plan.');
+                return;
+            }
             // Route Domo Suite into the EDITOR layout with full workspace access
-            // We just need to set the project type. The new layout will show the panel.
             setProjectType(ProjectType.PODCAST); // Default to podcast
             setViewMode('EDITOR');
-            // Don't force right panel open anymore, Domo has its own panel
             return;
         }
         if (mode === 'LEGAL_PRIVACY' || mode === 'LEGAL_TERMS') {
@@ -282,6 +285,9 @@ const App: React.FC = () => {
 
     // Helper: check if current project type is a Domo Suite type
     const isDomoSuiteType = projectType === ProjectType.PODCAST || projectType === ProjectType.NEWSLETTER || projectType === ProjectType.SLIDES;
+
+    // Helper: premium tier check — Auteur & Showrunner only
+    const isPremiumTier = userTier === 'AUTEUR' || userTier === 'SHOWRUNNER';
 
     const handleProjectSelect = (type: ProjectType) => {
         if ((type as any) === 'NOTES') {
@@ -541,19 +547,19 @@ const App: React.FC = () => {
 
 
 
-                    {projectType === ProjectType.YOUTUBE && (
+                    {projectType === ProjectType.YOUTUBE && isPremiumTier && (
                         <>
-                            <NavButton active={activeTab === 'youtube_seo' && showRightPanel} onClick={() => { setShowRightPanel(true); setActiveTab('youtube_seo'); }} icon="youtube_studio" tooltip="Specific YouTube SEO Studio" />
+                            <NavButton active={activeTab === 'youtube_seo' && showRightPanel} onClick={() => { setShowRightPanel(true); setActiveTab('youtube_seo'); }} icon="youtube_studio" tooltip="YouTube SEO Studio" />
                             <NavButton active={activeTab === 'youtube_thumb' && showRightPanel} onClick={() => { setShowRightPanel(true); setActiveTab('youtube_thumb'); }} icon="image" tooltip="Thumbnail Creator" />
                         </>
                     )}
-                    {projectType === ProjectType.SOCIAL_MEDIA && (
+                    {projectType === ProjectType.SOCIAL_MEDIA && isPremiumTier && (
                         <NavButton active={activeTab === 'social' && showRightPanel} onClick={() => { setShowRightPanel(true); setActiveTab('social'); }} icon="social_studio" tooltip="Social Studio" />
                     )}
 
                     {/* Domo Suite Sub-navigation (Visible only when in suite) */}
 
-                    {isDomoSuiteType && (
+                    {isDomoSuiteType && isPremiumTier && (
                         <div className="flex flex-col gap-3 mt-2 pt-2 border-t border-gray-800/50">
                             <NavButton active={projectType === ProjectType.PODCAST} onClick={() => handleProjectSelect(ProjectType.PODCAST)} icon="podcast" tooltip="Podcast Studio" />
                             <NavButton active={projectType === ProjectType.NEWSLETTER} onClick={() => handleProjectSelect(ProjectType.NEWSLETTER)} icon="newsletter" tooltip="Newsletter Gen" />
