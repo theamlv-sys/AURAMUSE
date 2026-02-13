@@ -77,7 +77,9 @@ export const CreativeSuite: React.FC<CreativeSuiteProps> = ({
     // Determining Active Tab from Project Type
     const activeTool = projectType === ProjectType.PODCAST ? 'podcast' :
         projectType === ProjectType.NEWSLETTER ? 'newsletter' :
-            projectType === ProjectType.SLIDES ? 'slides' : null;
+            projectType === ProjectType.SLIDES ? 'slides' :
+                projectType === ProjectType.YOUTUBE ? 'youtube' :
+                    projectType === ProjectType.SOCIAL_MEDIA ? 'social' : null;
 
     if (!activeTool) return null;
 
@@ -247,11 +249,15 @@ export const CreativeSuite: React.FC<CreativeSuiteProps> = ({
                 {activeTool === 'podcast' && '🎙️ Podcast Studio'}
                 {activeTool === 'newsletter' && '📧 Newsletter Gen'}
                 {activeTool === 'slides' && '📊 Slide Deck AI'}
+                {activeTool === 'youtube' && '🎥 YouTube Script'}
+                {activeTool === 'social' && '📱 Social Media'}
             </h2>
             <p className={`text-xs ${textMuted} mb-6`}>
                 {activeTool === 'podcast' && 'Turn your ideas into a fully scripted audio show.'}
                 {activeTool === 'newsletter' && 'Draft engaging newsletters in seconds.'}
                 {activeTool === 'slides' && 'Create professional slide decks and visuals.'}
+                {activeTool === 'youtube' && 'Plan and script your next viral video.'}
+                {activeTool === 'social' && 'Create content for all your social platforms.'}
             </p>
 
             {/* === PODCAST PANEL === */}
@@ -403,6 +409,38 @@ export const CreativeSuite: React.FC<CreativeSuiteProps> = ({
                         </div>
                     )}
                 </>
+            )}
+
+            {/* === YOUTUBE PANEL === */}
+            {activeTool === 'youtube' && (
+                <div className="space-y-4">
+                    <div className={`p-4 rounded-xl border ${isDark ? 'bg-gray-800/50 border-gray-700' : 'bg-white border-gray-200'} text-center`}>
+                        <div className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center mx-auto mb-3 shadow-lg">
+                            <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" /></svg>
+                        </div>
+                        <h3 className="font-bold text-lg mb-1">YouTube Script Mode</h3>
+                        <p className={`text-sm ${textMuted} mb-4`}>
+                            Write your script in the main editor. When you're ready, open the <strong>YouTube Studio</strong> in the right sidebar to generate titles, tags, and thumbnails.
+                        </p>
+                        <button onClick={() => onSendToEditor("# My YouTube Script\\n\\n**Hook:** [Start with a bang]\\n\\n**Intro:**\\n\\n**Main Content:**\\n\\n**Call to Action:**")} className="text-xs text-amber-500 hover:text-amber-400 font-medium">✨ Insert Script Template</button>
+                    </div>
+                </div>
+            )}
+
+            {/* === SOCIAL PANEL === */}
+            {activeTool === 'social' && (
+                <div className="space-y-4">
+                    <div className={`p-4 rounded-xl border ${isDark ? 'bg-gray-800/50 border-gray-700' : 'bg-white border-gray-200'} text-center`}>
+                        <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center mx-auto mb-3 shadow-lg">
+                            <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0m-3 6a1.5 1.5 0 00-3 0v2a7.5 7.5 0 0015 0v-5a1.5 1.5 0 00-3 0m-6-3V11m0-5.5v-1a1.5 1.5 0 013 0v1m0 0V11m0-5.5a1.5 1.5 0 013 0v3m0 0V11" /></svg>
+                        </div>
+                        <h3 className="font-bold text-lg mb-1">Social Media Mode</h3>
+                        <p className={`text-sm ${textMuted} mb-4`}>
+                            Draft your posts here. Use the <strong>Social Studio</strong> in the right sidebar to generate optimized content for Instagram, TikTok, X, and LinkedIn.
+                        </p>
+                        <button onClick={() => onSendToEditor("# Social Media Content Plan\\n\\n## Instagram\\n\\n## TikTok\\n\\n## Twitter/X\\n\\n## LinkedIn")} className="text-xs text-amber-500 hover:text-amber-400 font-medium">✨ Insert Social Template</button>
+                    </div>
+                </div>
             )}
 
             {/* NEWSLETTER PREVIEW MODAL */}

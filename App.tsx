@@ -14,6 +14,8 @@ import NotesMode from './components/NotesMode';
 import CalendarMode from './components/CalendarMode';
 import EmailStudio from './components/EmailStudio';
 import { CreativeSuite } from './components/CreativeSuite';
+import YouTubeTools from './components/YouTubeTools';
+import SocialTools from './components/SocialTools';
 import { ProjectType, Asset, TTSState, VoiceName, StoryBibleEntry, VersionSnapshot, SubscriptionTier, UsageStats, TIERS, SavedProject, ViewMode } from './types';
 import { persistenceService } from './services/persistenceService';
 import { supabase } from './services/supabaseClient';
@@ -52,7 +54,7 @@ const App: React.FC = () => {
 
     // --- UI STATE ---
     const [showRightPanel, setShowRightPanel] = useState(true);
-    const [activeTab, setActiveTab] = useState<'chat' | 'assets' | 'audio' | 'bible'>('chat'); // Removed 'domo'
+    const [activeTab, setActiveTab] = useState<'chat' | 'assets' | 'audio' | 'bible' | 'youtube' | 'social'>('chat'); // Removed 'domo'
     const [showSubModal, setShowSubModal] = useState(false);
 
     // --- DOMO SUITE STATE (Lifted for Voice/Agent Control) ---
@@ -537,15 +539,27 @@ const App: React.FC = () => {
                     <NavButton active={activeTab === 'assets' && showRightPanel} onClick={() => { setShowRightPanel(true); setActiveTab('assets'); }} icon="library" tooltip="Assets" />
                     <NavButton active={activeTab === 'audio' && showRightPanel} onClick={() => { if (checkLimit('audio')) { setShowRightPanel(true); setActiveTab('audio'); } }} icon="mic" tooltip="Audio Studio" />
 
-                    <div className="w-10 h-[1px] bg-gray-800 my-2" />
 
-                    <NavButton active={isDomoSuiteType} onClick={() => handleNavigate('CREATIVE_SUITE')} icon="domo" tooltip="Domo Creative Suite" />
+
+                    {projectType === ProjectType.YOUTUBE && (
+                        <>
+                            <NavButton active={activeTab === 'youtube_seo' && showRightPanel} onClick={() => { setShowRightPanel(true); setActiveTab('youtube_seo'); }} icon="youtube_studio" tooltip="Specific YouTube SEO Studio" />
+                            <NavButton active={activeTab === 'youtube_thumb' && showRightPanel} onClick={() => { setShowRightPanel(true); setActiveTab('youtube_thumb'); }} icon="image" tooltip="Thumbnail Creator" />
+                        </>
+                    )}
+                    {projectType === ProjectType.SOCIAL_MEDIA && (
+                        <NavButton active={activeTab === 'social' && showRightPanel} onClick={() => { setShowRightPanel(true); setActiveTab('social'); }} icon="social_studio" tooltip="Social Studio" />
+                    )}
+
+                    {/* Domo Suite Sub-navigation (Visible only when in suite) */}
 
                     {isDomoSuiteType && (
                         <div className="flex flex-col gap-3 mt-2 pt-2 border-t border-gray-800/50">
                             <NavButton active={projectType === ProjectType.PODCAST} onClick={() => handleProjectSelect(ProjectType.PODCAST)} icon="podcast" tooltip="Podcast Studio" />
                             <NavButton active={projectType === ProjectType.NEWSLETTER} onClick={() => handleProjectSelect(ProjectType.NEWSLETTER)} icon="newsletter" tooltip="Newsletter Gen" />
                             <NavButton active={projectType === ProjectType.SLIDES} onClick={() => handleProjectSelect(ProjectType.SLIDES)} icon="slides" tooltip="Slide Deck AI" />
+                            <NavButton active={projectType === ProjectType.YOUTUBE} onClick={() => handleProjectSelect(ProjectType.YOUTUBE)} icon="youtube" tooltip="YouTube Script" />
+                            <NavButton active={projectType === ProjectType.SOCIAL_MEDIA} onClick={() => handleProjectSelect(ProjectType.SOCIAL_MEDIA)} icon="social" tooltip="Social Media" />
                         </div>
                     )}
 
@@ -554,43 +568,45 @@ const App: React.FC = () => {
             </div>
 
             {/* DOMO SUITE PANEL (Permanent Left Column for Domo Types) */}
-            {isDomoSuiteType && (
-                <div className="w-[360px] border-r border-gray-200 dark:border-gray-800 flex flex-col z-10 shrink-0 bg-white dark:bg-gray-900 transition-colors duration-500">
-                    <CreativeSuite
-                        userTier={userTier}
-                        theme={theme}
-                        projectType={projectType!}
-                        editorContent={content}
-                        onSendToEditor={(t) => {
-                            handleSnapshot();
-                            setContent(t);
-                        }}
-                        // Passed State
-                        podTopic={podTopic} setPodTopic={setPodTopic}
-                        podStyle={podStyle} setPodStyle={setPodStyle}
-                        podHost1={podHost1} setPodHost1={setPodHost1}
-                        podHost2={podHost2} setPodHost2={setPodHost2}
-                        podDuration={podDuration} setPodDuration={setPodDuration}
-                        podFormat={podFormat} setPodFormat={setPodFormat}
+            {
+                isDomoSuiteType && (
+                    <div className="w-[360px] border-r border-gray-200 dark:border-gray-800 flex flex-col z-10 shrink-0 bg-white dark:bg-gray-900 transition-colors duration-500">
+                        <CreativeSuite
+                            userTier={userTier}
+                            theme={theme}
+                            projectType={projectType!}
+                            editorContent={content}
+                            onSendToEditor={(t) => {
+                                handleSnapshot();
+                                setContent(t);
+                            }}
+                            // Passed State
+                            podTopic={podTopic} setPodTopic={setPodTopic}
+                            podStyle={podStyle} setPodStyle={setPodStyle}
+                            podHost1={podHost1} setPodHost1={setPodHost1}
+                            podHost2={podHost2} setPodHost2={setPodHost2}
+                            podDuration={podDuration} setPodDuration={setPodDuration}
+                            podFormat={podFormat} setPodFormat={setPodFormat}
 
-                        nlTopic={nlTopic} setNlTopic={setNlTopic}
-                        nlType={nlType} setNlType={setNlType}
-                        nlStyle={nlStyle} setNlStyle={setNlStyle}
-                        nlNotes={nlNotes} setNlNotes={setNlNotes}
-                        nlContent={nlContent} setNlContent={setNlContent}
-                        showNlPreview={showNlPreview} setShowNlPreview={setShowNlPreview}
+                            nlTopic={nlTopic} setNlTopic={setNlTopic}
+                            nlType={nlType} setNlType={setNlType}
+                            nlStyle={nlStyle} setNlStyle={setNlStyle}
+                            nlNotes={nlNotes} setNlNotes={setNlNotes}
+                            nlContent={nlContent} setNlContent={setNlContent}
+                            showNlPreview={showNlPreview} setShowNlPreview={setShowNlPreview}
 
-                        slTopic={slTopic} setSlTopic={setSlTopic}
-                        slCount={slCount} setSlCount={setSlCount}
-                        slStyle={slStyle} setSlStyle={setSlStyle}
-                        slNotes={slNotes} setSlNotes={setSlNotes}
-                        slDeck={slDeck} setSlDeck={setSlDeck}
-                        slImages={slImages} setSlImages={setSlImages}
-                        showSlPreview={showSlPreview} setShowSlPreview={setShowSlPreview}
-                        activeSlideIndex={activeSlideIndex} setActiveSlideIndex={setActiveSlideIndex}
-                    />
-                </div>
-            )}
+                            slTopic={slTopic} setSlTopic={setSlTopic}
+                            slCount={slCount} setSlCount={setSlCount}
+                            slStyle={slStyle} setSlStyle={setSlStyle}
+                            slNotes={slNotes} setSlNotes={setSlNotes}
+                            slDeck={slDeck} setSlDeck={setSlDeck}
+                            slImages={slImages} setSlImages={setSlImages}
+                            showSlPreview={showSlPreview} setShowSlPreview={setShowSlPreview}
+                            activeSlideIndex={activeSlideIndex} setActiveSlideIndex={setActiveSlideIndex}
+                        />
+                    </div>
+                )
+            }
 
             <div className="flex-1 flex overflow-hidden relative">
                 <div className="flex-1 w-full h-full overflow-hidden">
@@ -703,9 +719,26 @@ const App: React.FC = () => {
                             editorContent={content}
                         />
                     )}
+                    {(activeTab === 'youtube_seo' || activeTab === 'youtube_thumb') && (
+                        <YouTubeTools
+                            content={content}
+                            userTier={userTier}
+                            initialTab={activeTab === 'youtube_seo' ? 'seo' : 'thumbnail'}
+                            assets={assets}
+                            onUpload={handleFileUpload}
+                            onAddLink={handleAddLink}
+                            onDelete={(id) => { setAssets(p => p.filter(a => a.id !== id)); persistenceService.deleteAsset(id); }}
+                            providerToken={session?.provider_token}
+                        />
+                    )}
+                    {activeTab === 'social' && (
+                        <SocialTools
+                            content={content}
+                        />
+                    )}
                 </div>
             </div>
-        </div>
+        </div >
     );
 };
 
@@ -726,6 +759,12 @@ const NavButton = ({ active, onClick, icon, tooltip }: any) => (
         {icon === 'newsletter' && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 7.5h1.5m-1.5 3h1.5m-7.5 3h7.5m-7.5 3h7.5m3-9h3.375c.621 0 1.125.504 1.125 1.125V18a2.25 2.25 0 01-2.25 2.25M16.5 7.5V18a2.25 2.25 0 002.25 2.25M16.5 7.5V4.875c0-.621-.504-1.125-1.125-1.125H4.125C3.504 3.75 3 4.254 3 4.875V18a2.25 2.25 0 002.25 2.25h13.5M6 7.5h3v3H6v-3z" /></svg>}
         {icon === 'slides' && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h12A2.25 2.25 0 0120.25 6v12A2.25 2.25 0 0118 20.25H6A2.25 2.25 0 013.75 18V6zM9 16.5h6" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 12h.008v.008H12V12z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9h-7.5" /></svg>}
         {icon === 'domo' && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>}
+
+        {icon === 'youtube' && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" /></svg>}
+        {icon === 'youtube_studio' && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 5.25v13.5" /></svg>}
+        {icon === 'social' && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" /></svg>}
+        {icon === 'social_studio' && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v6m3-3H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+        {icon === 'image' && <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" /></svg>}
     </button>
 );
 

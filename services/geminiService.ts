@@ -5,6 +5,14 @@ import { EXPERT_PROMPTS } from "../prompts";
 // Helper to ensure we get a fresh instance with the latest key if selected
 const getAI = () => new GoogleGenAI({ apiKey: import.meta.env.VITE_GOOGLE_GENAI_API_KEY });
 
+declare global {
+  interface Window {
+    aistudio?: {
+      hasSelectedApiKey: () => Promise<boolean>;
+    };
+  }
+}
+
 const SYSTEM_INSTRUCTION_BASE = `You are Muse, the world's most advanced creative writing assistant. 
 Your goal is to write in a purely human style—nuanced, emotional, and devoid of "AI" clichés (e.g., "tapestry", "delve", "testament").
 You are an expert in all formats:
@@ -1105,5 +1113,262 @@ CRITICAL PRESENTATION RULES:
       title: "Generation Error",
       slides: [{ title: "Error", bullets: ["Failed: " + (error instanceof Error ? error.message : '')], notes: "", layout: "content" }]
     };
+  }
+};
+
+// --- YOUTUBE SEO ---
+export const generateYouTubeMetadata = async (content: string): Promise<{ titles: string[], description: string, tags: string[], hashtags: string[] }> => {
+  const ai = getAI();
+
+  const prompt = `You are a YouTube SEO Expert. Analyze the script below and generate high-performing metadata.
+    Output a JSON object with this exact schema:
+    {
+      "titles": ["string", "string", "string", "string", "string"],
+      "description": "string",
+      "tags": ["string", "string", ...],
+      "hashtags": ["string", "string", ...]
+    }
+    
+    Rules:
+    - Titles: High CTR, punchy, under 60 chars.
+    - Description: SEO-optimized, 3 sentences max summary + keywords.
+    - Tags: 15 relevant keyword tags.
+    - Hashtags: 3-5 relevant hashtags.
+    - RESEARCH: Leverage your internal knowledge of current YouTube trends and search behaviors.
+
+    SCRIPT/CONTENT:
+    ${content.slice(0, 10000)}
+    `;
+
+  try {
+    const text = await domoGenerate(ai, prompt, true);
+    return JSON.parse(text);
+  } catch (e) {
+    console.error("SEO Gen Error:", e);
+    throw e;
+  }
+};
+
+// --- SOCIAL MEDIA ---
+export const generateSocialPost = async (content: string, platform: 'instagram' | 'tiktok' | 'twitter' | 'linkedin', tone: string): Promise<string> => {
+  const ai = getAI();
+
+  const prompt = `You are a Social Media Manager. Create a viral ${platform} post based on the content below.
+    Tone: ${tone}
+    Platform Rules:
+    - Instagram: Visual description, engaging caption, 30 hashtags.
+    - TikTok: Script for a short video, visual cues, trending sounds suggestion.
+    - Twitter/X: Thread of 3-5 tweets or one punchy tweet, max 280 chars, 2 hashtags.
+    - LinkedIn: Professional, value-driven, spacing for readability.
+
+    CONTENT:
+    ${content.slice(0, 5000)}
+    `;
+
+  try {
+    return await domoGenerate(ai, prompt, false);
+  } catch (e) {
+    console.error("Social Gen Error:", e);
+    throw e;
+  }
+};
+
+// --- THUMBNAIL HELPER ---
+export const generateThumbnailPrompt = async (content: string): Promise<string> => {
+  const ai = getAI();
+  const prompt = `You are a YouTube Thumbnail Expert. Create a detailed, high-performing text-to-image prompt for the video script below.
+    Rules:
+    - Focus on visual elements, emotions, and composition.
+    - Use art direction keywords (e.g., "hyper-realistic", "vibrant colors", "shocked expression").
+    - NO text in the image (or minimal).
+    - Output ONLY the prompt string.
+
+    SCRIPT:
+    ${content.slice(0, 5000)}
+    `;
+
+  try {
+    return await domoGenerate(ai, prompt, false);
+  } catch (e) {
+    console.error("Thumbnail Prompt Error:", e);
+    throw e;
+  }
+};
+
+export const generateThumbnailPromptFromAssets = async (inputPrompt: string, assets: Asset[]): Promise<string> => {
+  const ai = getAI();
+  // Use Gemini 2.5 Flash for visual analysis of assets (video/images)
+  const modelId = 'gemini-2.5-flash-image';
+
+  const parts: any[] = [];
+
+  // Add assets to prompt
+  for (const asset of assets) {
+    if (asset.base64 && (asset.type === 'image' || asset.type === 'pdf')) {
+      parts.push({
+        inlineData: {
+          mimeType: asset.mimeType,
+          data: asset.base64
+        }
+      });
+    } else if (asset.url && (asset.type === 'video' || asset.url.includes('youtube'))) {
+      // Native video support
+      parts.push({
+        fileData: {
+          mimeType: 'video/*',
+          fileUri: asset.url
+        }
+      });
+    }
+  }
+
+  const promptText = `You are a world-class YouTube Strategist and Art Director.
+  TASK: Analyze the attached visual assets (images or video) and the user's idea: "${inputPrompt}".
+  Create a detailed, high-performing text-to-image prompt for a YouTube Thumbnail that represents this content.
+  
+  RULES:
+  1. Analyze the ACTUAL visual content (characters, setting, action, mood) from the attachments.
+  2. Combine it with the user's idea.
+  3. Design a thumbnail that has high CTR (Click Through Rate): bright, clear focal point, emotional facial expressions, high contrast.
+  4. Output ONLY the text prompt for the image generator. Do NOT output descriptions of text overlays.
+  5. Style: Hyper-realistic, 8k, cinematographic lighting, vibrant.
+  `;
+
+  parts.push({ text: promptText });
+
+  try {
+    const result = await ai.models.generateContent({
+      model: modelId,
+      contents: { parts }
+    });
+    return result.text || "";
+  } catch (e) {
+    console.error("Asset Thumbnail Error:", e);
+    throw e;
+  }
+};
+
+export const generateYouTubeAnalysis = async (query: string): Promise<string> => {
+  const ai = getAI();
+
+  const parts: any[] = [];
+  const tools: any[] = [{ googleSearch: {} }];
+
+  // Detect YouTube video URL (watch, shorts, youtu.be)
+  const ytVideoMatch = query.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]+)/);
+  const isYouTubeUrl = query.includes('youtube.com') || query.includes('youtu.be');
+
+  if (ytVideoMatch) {
+    // === YOUTUBE VIDEO URL ===
+    // Pass the video directly as fileData so Gemini can actually WATCH the video
+    const normalizedUrl = `https://www.youtube.com/watch?v=${ytVideoMatch[1]}`;
+    parts.push({
+      fileData: { fileUri: normalizedUrl }
+    });
+    parts.push({
+      text: `You are a world-class YouTube Strategist & Video Analyst.
+
+TASK: You have been given a YouTube video to analyze. Watch it carefully and provide a comprehensive analysis.
+
+OUTPUT STRUCTURE (Markdown):
+## 📊 Video Overview
+Title, channel, topic, key takeaways from the content.
+
+## 🎬 Content Breakdown
+- Hook analysis (first 30 seconds)
+- Structure and pacing
+- Key talking points and timestamps
+- Call-to-actions used
+
+## 📈 Performance Indicators
+Use Google Search to find real stats: view count, like ratio, comments, how it compares to channel average.
+
+## 🎯 What Makes This Video Work (or Not)
+Thumbnail effectiveness, title optimization, retention strategies, audience engagement.
+
+## 🚀 Actionable Takeaways
+What a creator can learn from this video. Specific, actionable insights.
+
+## 🏷️ SEO & Discovery
+Tags they likely used, search terms this ranks for, suggested improvements.
+
+Be specific with timestamps and real observations from the video. No generic advice.`
+    });
+  } else if (isYouTubeUrl) {
+    // === YOUTUBE CHANNEL / PLAYLIST URL ===
+    // Use urlContext to crawl the channel page + googleSearch for stats
+    tools.push({ urlContext: {} });
+    parts.push({
+      text: `You are a world-class YouTube Strategist & Channel Analyst.
+
+TASK: Research and deeply analyze this YouTube channel: ${query}
+
+Use URL context to read the actual channel page, and Google Search to find real stats and recent activity.
+
+OUTPUT STRUCTURE (Markdown):
+## 📊 Channel Overview
+Channel name, niche, subscriber count, total views, upload frequency, joined date.
+
+## 📈 Recent Performance
+Last 5-10 video titles, their view counts, upload consistency, trending patterns.
+
+## 🎯 Audience & Positioning
+Who watches this channel, audience demographics, brand positioning, tone of content.
+
+## 🚀 Content Strategy Analysis
+What content types perform best, video length patterns, series vs standalone, shorts usage.
+
+## ⚠️ Gap Analysis & Opportunities
+What this channel is missing, untapped content ideas, competitor advantages.
+
+## 🏷️ SEO & Discovery Strategy
+Keywords they rank for, tag strategy, title patterns, description optimization.
+
+Use REAL data from the actual channel. Cite specific video titles and numbers. No generic advice.`
+    });
+  } else {
+    // === SEARCH TOPIC / KEYWORD / HANDLE ===
+    // Use Google Search + URL context to research the topic across YouTube
+    tools.push({ urlContext: {} });
+    parts.push({
+      text: `You are a world-class YouTube Strategist & Market Researcher.
+
+TASK: Research the YouTube niche/topic/creator: "${query}"
+
+Search for real, current data about this query on YouTube. If it's a creator handle (@name), find their channel and analyze it. If it's a topic, analyze the top creators and videos in this niche.
+
+OUTPUT STRUCTURE (Markdown):
+## 📊 Executive Summary
+Key findings about this niche/creator.
+
+## 📈 Market Overview
+Top channels in this space, subscriber ranges, view count benchmarks, content saturation level.
+
+## 🎯 Audience Insights
+Who watches this type of content, demographics, peak engagement times, platform behavior.
+
+## 🚀 Content Opportunities
+Underserved sub-topics, trending formats, content gaps competitors aren't filling.
+
+## ⚠️ Competitive Landscape
+Top 5 creators, what they do well, their weaknesses, how to differentiate.
+
+## 🏷️ SEO & Discovery Strategy
+High-volume keywords, long-tail opportunities, optimal title formulas, tag recommendations.
+
+Use REAL channel names, video titles, and numbers. Be specific and actionable. No generic advice.`
+    });
+  }
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: { parts },
+      config: { tools }
+    });
+    return response.text || "";
+  } catch (e) {
+    console.error("YouTube Analysis Error:", e);
+    throw e;
   }
 };
