@@ -484,9 +484,16 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
                     userTier === 'SHOWRUNNER' ? (
                       <button
                         onClick={async () => {
+                          const { supabase } = await import('../services/supabaseClient');
+                          const { data: { user } } = await supabase.auth.getUser();
+
+                          if (user?.email !== 'auraassistantai@auradomo.com') {
+                            alert('Gmail integration is currently in restricted beta (Admin only). We are working on verification.');
+                            return;
+                          }
+
                           // Set the CORRECT flag that App.tsx checks on return
                           sessionStorage.setItem('muse_connecting_gmail', 'true');
-                          const { supabase } = await import('../services/supabaseClient');
                           await supabase.auth.signInWithOAuth({
                             provider: 'google',
                             options: {
@@ -812,105 +819,109 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
       </div>
 
       {/* --- DELETE CONFIRMATION MODAL --- */}
-      {projectToDelete && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in"
-            onClick={() => setProjectToDelete(null)}
-          ></div>
-          <div className={`relative w-full max-w-md ${cardBg} border ${borderColor} rounded-2xl p-8 shadow-2xl animate-zoom-in`}>
-            <div className="flex flex-col items-center text-center">
-              <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center text-red-500 mb-6">
-                <TrashIcon className="w-8 h-8" />
-              </div>
-              <h3 className={`text-2xl font-bold ${textColor} mb-2`}>Delete Project?</h3>
-              <p className={`text-sm ${subTextColor} mb-8`}>
-                This action cannot be undone. All content within this project will be permanently removed from your library.
-              </p>
-              <div className="flex gap-4 w-full">
-                <button
-                  onClick={() => setProjectToDelete(null)}
-                  className={`flex-1 py-3 rounded-xl font-bold ${isDark ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'} transition-all`}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => {
-                    onDeleteProject(projectToDelete);
-                    setProjectToDelete(null);
-                  }}
-                  className="flex-1 py-3 rounded-xl font-bold bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-900/20 transition-all"
-                >
-                  Delete Forever
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* --- GOOGLE DRIVE PICKER MODAL --- */}
-      {showDrivePicker && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm animate-fade-in" onClick={() => setShowDrivePicker(false)}></div>
-          <div className={`relative w-full max-w-2xl ${cardBg} border ${borderColor} rounded-2xl p-6 shadow-2xl animate-zoom-in overflow-hidden flex flex-col max-h-[80vh]`}>
-            <div className="flex justify-between items-center mb-6">
-              <h3 className={`text-xl font-bold ${textColor} flex items-center gap-2`}>
-                <svg className="w-6 h-6 text-blue-500" viewBox="0 0 24 24" fill="currentColor"><path d="M13.333 14.667v2.666h5.334v-2.666H13.333zM13.333 9.333v2.667h5.334V9.333H13.333zM8 17.333h2.667v-2.666H8v2.666zM8 12h2.667V9.333H8V12zM21.053 5.333H2.947C1.867 5.333 1.013 6.227 1.013 7.307L1 20.64c0 1.08.867 1.973 1.947 1.973h18.106c1.08 0 1.947-.893 1.947-1.973V7.307c0-1.08-.867-1.974-1.947-1.974zM16 2.667H8v2.666h8V2.667z" /></svg>
-                Import from Docs
-              </h3>
-              <button onClick={() => setShowDrivePicker(false)} className="text-gray-500 hover:text-white">✕</button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 p-2">
-              {isLoadingDrive ? (
-                <div className="flex justify-center py-10"><div className="w-8 h-8 border-2 border-muse-500 border-t-transparent rounded-full animate-spin"></div></div>
-              ) : driveAuthError ? (
-                <div className="flex flex-col items-center justify-center py-10 text-center gap-4">
-                  <div className="p-3 bg-red-500/10 rounded-full text-red-500">
-                    <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                  </div>
-                  <div>
-                    <h4 className={`text-lg font-bold ${textColor}`}>Access Required</h4>
-                    <p className={`text-sm ${subTextColor} max-w-xs mx-auto mt-1`}>
-                      We need permission to view your Google Docs to import them.
-                    </p>
-                  </div>
+      {
+        projectToDelete && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in"
+              onClick={() => setProjectToDelete(null)}
+            ></div>
+            <div className={`relative w-full max-w-md ${cardBg} border ${borderColor} rounded-2xl p-8 shadow-2xl animate-zoom-in`}>
+              <div className="flex flex-col items-center text-center">
+                <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center text-red-500 mb-6">
+                  <TrashIcon className="w-8 h-8" />
+                </div>
+                <h3 className={`text-2xl font-bold ${textColor} mb-2`}>Delete Project?</h3>
+                <p className={`text-sm ${subTextColor} mb-8`}>
+                  This action cannot be undone. All content within this project will be permanently removed from your library.
+                </p>
+                <div className="flex gap-4 w-full">
                   <button
-                    onClick={handleAuthorizeDrive}
-                    className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-full font-bold text-sm transition-all shadow-lg hover:shadow-blue-500/20"
+                    onClick={() => setProjectToDelete(null)}
+                    className={`flex-1 py-3 rounded-xl font-bold ${isDark ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'} transition-all`}
                   >
-                    Authorize Google Drive
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      onDeleteProject(projectToDelete);
+                      setProjectToDelete(null);
+                    }}
+                    className="flex-1 py-3 rounded-xl font-bold bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-900/20 transition-all"
+                  >
+                    Delete Forever
                   </button>
                 </div>
-              ) : driveFiles.length === 0 ? (
-                <div className="text-center py-10 text-gray-500">No Google Docs found.</div>
-              ) : (
-                driveFiles.map(file => (
-                  <button
-                    key={file.id}
-                    onClick={() => handleImportDoc(file.id, file.name)}
-                    className={`w-full text-left p-4 rounded-xl border ${isDark ? 'bg-[#111] border-gray-800 hover:border-muse-500' : 'bg-gray-50 border-gray-200 hover:border-muse-500'} transition-all flex items-center justify-between group`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-blue-500/10 text-blue-500 rounded flex items-center justify-center">
-                        <span className="font-serif font-bold text-xs">A</span>
-                      </div>
-                      <div>
-                        <div className={`font-bold ${textColor}`}>{file.name}</div>
-                        <div className="text-[10px] text-gray-500">{new Date(file.modifiedTime).toLocaleDateString()}</div>
-                      </div>
-                    </div>
-                    <span className="text-xs font-bold text-muse-500 opacity-0 group-hover:opacity-100 transition-opacity">Import</span>
-                  </button>
-                ))
-              )}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )
+      }
 
-    </div>
+      {/* --- GOOGLE DRIVE PICKER MODAL --- */}
+      {
+        showDrivePicker && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/80 backdrop-blur-sm animate-fade-in" onClick={() => setShowDrivePicker(false)}></div>
+            <div className={`relative w-full max-w-2xl ${cardBg} border ${borderColor} rounded-2xl p-6 shadow-2xl animate-zoom-in overflow-hidden flex flex-col max-h-[80vh]`}>
+              <div className="flex justify-between items-center mb-6">
+                <h3 className={`text-xl font-bold ${textColor} flex items-center gap-2`}>
+                  <svg className="w-6 h-6 text-blue-500" viewBox="0 0 24 24" fill="currentColor"><path d="M13.333 14.667v2.666h5.334v-2.666H13.333zM13.333 9.333v2.667h5.334V9.333H13.333zM8 17.333h2.667v-2.666H8v2.666zM8 12h2.667V9.333H8V12zM21.053 5.333H2.947C1.867 5.333 1.013 6.227 1.013 7.307L1 20.64c0 1.08.867 1.973 1.947 1.973h18.106c1.08 0 1.947-.893 1.947-1.973V7.307c0-1.08-.867-1.974-1.947-1.974zM16 2.667H8v2.666h8V2.667z" /></svg>
+                  Import from Docs
+                </h3>
+                <button onClick={() => setShowDrivePicker(false)} className="text-gray-500 hover:text-white">✕</button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto custom-scrollbar space-y-2 p-2">
+                {isLoadingDrive ? (
+                  <div className="flex justify-center py-10"><div className="w-8 h-8 border-2 border-muse-500 border-t-transparent rounded-full animate-spin"></div></div>
+                ) : driveAuthError ? (
+                  <div className="flex flex-col items-center justify-center py-10 text-center gap-4">
+                    <div className="p-3 bg-red-500/10 rounded-full text-red-500">
+                      <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                    </div>
+                    <div>
+                      <h4 className={`text-lg font-bold ${textColor}`}>Access Required</h4>
+                      <p className={`text-sm ${subTextColor} max-w-xs mx-auto mt-1`}>
+                        We need permission to view your Google Docs to import them.
+                      </p>
+                    </div>
+                    <button
+                      onClick={handleAuthorizeDrive}
+                      className="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-full font-bold text-sm transition-all shadow-lg hover:shadow-blue-500/20"
+                    >
+                      Authorize Google Drive
+                    </button>
+                  </div>
+                ) : driveFiles.length === 0 ? (
+                  <div className="text-center py-10 text-gray-500">No Google Docs found.</div>
+                ) : (
+                  driveFiles.map(file => (
+                    <button
+                      key={file.id}
+                      onClick={() => handleImportDoc(file.id, file.name)}
+                      className={`w-full text-left p-4 rounded-xl border ${isDark ? 'bg-[#111] border-gray-800 hover:border-muse-500' : 'bg-gray-50 border-gray-200 hover:border-muse-500'} transition-all flex items-center justify-between group`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-blue-500/10 text-blue-500 rounded flex items-center justify-center">
+                          <span className="font-serif font-bold text-xs">A</span>
+                        </div>
+                        <div>
+                          <div className={`font-bold ${textColor}`}>{file.name}</div>
+                          <div className="text-[10px] text-gray-500">{new Date(file.modifiedTime).toLocaleDateString()}</div>
+                        </div>
+                      </div>
+                      <span className="text-xs font-bold text-muse-500 opacity-0 group-hover:opacity-100 transition-opacity">Import</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      }
+
+    </div >
   );
 };
 

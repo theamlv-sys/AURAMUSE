@@ -52,6 +52,13 @@ const EmailStudio: React.FC<EmailStudioProps> = ({ isDark, onClose, userTier = '
             return;
         }
 
+        const { data: { user } } = await supabase.auth.getUser();
+
+        if (user?.email !== 'auraassistantai@auradomo.com') {
+            alert('Gmail integration is currently in restricted beta (Admin only). We are working on verification.');
+            return;
+        }
+
         console.log("Initiating Gmail OAuth...");
         sessionStorage.setItem('muse_connecting_gmail', 'true'); // Flag to auto-connect on return
         const { data, error } = await supabase.auth.signInWithOAuth({

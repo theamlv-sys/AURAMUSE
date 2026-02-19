@@ -168,6 +168,16 @@ const App: React.FC = () => {
                 setVersionHistory(versionsData);
 
                 if (usageData && usageData.tier !== 'FREE') {
+                    setUserTier(usageData.tier); // Restore saved tier first
+                    setUsage(usageData.usage);
+                }
+
+                // VERIFICATION OVERRIDE
+                if (localStorage.getItem('muse_verification_override') === 'true') {
+                    console.log("VERIFICATION MODE: Granting Showrunner Access");
+                    setUserTier('SHOWRUNNER');
+                    setHasAccess(true); // Ensure access is granted
+                } else if (usageData && usageData.tier !== 'FREE') {
                     setHasAccess(true);
                 }
 
@@ -233,7 +243,10 @@ const App: React.FC = () => {
     // Sync Usage
     useEffect(() => {
         if (hasAccess && session) {
-            persistenceService.syncUsage(userTier, usage);
+            // Prevent permanent upgrade if using verification override
+            const isVerification = localStorage.getItem('muse_verification_override') === 'true';
+            const tierToSync = isVerification ? 'FREE' : userTier;
+            persistenceService.syncUsage(tierToSync, usage);
         }
     }, [userTier, usage, hasAccess, session]);
 
@@ -252,10 +265,16 @@ const App: React.FC = () => {
     };
 
     const handleLogout = async () => {
+        // If in verification mode, ensure we reset to FREE in DB before leaving
+        if (localStorage.getItem('muse_verification_override') === 'true') {
+            await persistenceService.syncUsage('FREE', usage);
+        }
+
         await supabase.auth.signOut();
         sessionStorage.removeItem('muse_gmail_active');
         sessionStorage.removeItem('muse_gmail_token');
         sessionStorage.removeItem('muse_connecting_gmail');
+        localStorage.removeItem('muse_verification_override'); // Clear verification
         setIsGmailConnected(false);
         setHasAccess(false);
         setSession(null);

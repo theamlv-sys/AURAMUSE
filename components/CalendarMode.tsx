@@ -91,6 +91,9 @@ const CalendarMode: React.FC<CalendarModeProps> = ({ onBack, userTier = 'FREE', 
             alert("Google Calendar integration is a Showrunner feature.");
             return;
         }
+
+
+
         await supabase.auth.signInWithOAuth({
             provider: 'google',
             options: {

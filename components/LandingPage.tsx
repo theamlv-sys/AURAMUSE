@@ -192,6 +192,19 @@ const LandingPage: React.FC<LandingPageProps> = ({ onSelectTier, onNavigateLegal
                     >
                         Continue as Visitor (Restricted Access)
                     </button>
+
+                    {/* GOOGLE VERIFICATION (Temporary Access) */}
+                    <div className="mt-8">
+                        <button
+                            onClick={() => {
+                                localStorage.setItem('muse_verification_override', 'true');
+                                window.location.reload();
+                            }}
+                            className="text-[10px] bg-white/10 hover:bg-white/20 text-white px-4 py-2 rounded-full uppercase tracking-widest transition-all border border-white/10"
+                        >
+                            Google Verification Access
+                        </button>
+                    </div>
                 </div>
             </div>
 
