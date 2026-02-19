@@ -215,6 +215,12 @@ const App: React.FC = () => {
                 // IMMEDIATELY check gmail BEFORE any async work
                 checkGmailConnection(session);
                 loadUserData(session);
+
+                // CLEANUP HASH AFTER LOGIN SUCCESS (Prevents infinite loop)
+                const hash = window.location.hash;
+                if (hash && (hash.includes('access_token') || hash.includes('error_description') || hash === '#')) {
+                    window.history.replaceState({}, '', window.location.pathname + window.location.search);
+                }
             } else {
                 if (mounted) {
                     setHasAccess(false);
@@ -229,7 +235,7 @@ const App: React.FC = () => {
         };
     }, []);
 
-    // Handle Redirects (Stripe & Auth Hash)
+    // Handle Redirects (Stripe Only - Auth Moved)
     useEffect(() => {
         // 1. Stripe Session
         const urlParams = new URLSearchParams(window.location.search);
@@ -238,14 +244,6 @@ const App: React.FC = () => {
             const url = new URL(window.location.href);
             url.searchParams.delete('session_id');
             window.history.replaceState({}, '', url);
-        }
-
-        // 2. Auth Hash Cleanup (removes #access_token=...)
-        if (window.location.hash) {
-            const hash = window.location.hash;
-            if (hash.includes('access_token') || hash.includes('error_description') || hash === '#') {
-                window.history.replaceState({}, '', window.location.pathname + window.location.search);
-            }
         }
     }, []);
 
