@@ -171,20 +171,27 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
       return;
     }
 
+    // 2. Check Admin — only admin can browse all Drive files
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user?.email !== 'auraassistantai@auradomo.com') {
+      alert('🚧 Google Docs browser coming soon! You can still export your projects to Google Docs.');
+      return;
+    }
+
     setShowDrivePicker(true);
     setIsLoadingDrive(true);
-    setDriveAuthError(false); // Reset error state
+    setDriveAuthError(false);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session?.provider_token) {
-        const files = await googleDriveService.listDocs(session.provider_token);
+      const driveToken = session?.provider_token || sessionStorage.getItem('muse_drive_token');
+      if (driveToken) {
+        const files = await googleDriveService.listDocs(driveToken);
         setDriveFiles(files);
       } else {
         throw new Error("No provider token found.");
       }
     } catch (e: any) {
       console.error("Drive Error:", e);
-      // Show the "Authorize" button in the modal instead of a popup
       setDriveAuthError(true);
     } finally {
       setIsLoadingDrive(false);
@@ -192,11 +199,16 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
   };
 
   const handleAuthorizeDrive = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    const isAdmin = user?.email === 'auraassistantai@auradomo.com';
+
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: window.location.origin,
-        scopes: 'https://www.googleapis.com/auth/drive.file',
+        scopes: isAdmin
+          ? 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file'
+          : 'https://www.googleapis.com/auth/drive.file',
         queryParams: {
           access_type: 'offline',
           prompt: 'consent select_account',

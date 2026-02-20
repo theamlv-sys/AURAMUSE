@@ -147,11 +147,16 @@ const NotesMode: React.FC<NotesModeProps> = ({ onBack, initialContent = '', onSa
             return;
         }
         const { supabase } = await import('../services/supabaseClient');
+        const { data: { user } } = await supabase.auth.getUser();
+        const isAdmin = user?.email === 'auraassistantai@auradomo.com';
+
         await supabase.auth.signInWithOAuth({
             provider: 'google',
             options: {
                 redirectTo: window.location.origin,
-                scopes: 'https://www.googleapis.com/auth/drive.file',
+                scopes: isAdmin
+                    ? 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file'
+                    : 'https://www.googleapis.com/auth/drive.file',
                 queryParams: { access_type: 'offline', prompt: 'consent select_account' },
             }
         });

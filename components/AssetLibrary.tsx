@@ -38,13 +38,19 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ assets, onUpload, onAddLink
     };
 
     const handleOpenDrivePicker = async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user?.email !== 'auraassistantai@auradomo.com') {
+            alert('🚧 Google Drive media browser coming soon! You can still upload files directly.');
+            return;
+        }
         setShowDrivePicker(true);
         setIsLoadingDrive(true);
         setDriveAuthError(false);
         try {
             const { data: { session } } = await supabase.auth.getSession();
-            if (session?.provider_token) {
-                const files = await googleDriveService.listMedia(session.provider_token);
+            const driveToken = session?.provider_token || sessionStorage.getItem('muse_drive_token');
+            if (driveToken) {
+                const files = await googleDriveService.listMedia(driveToken);
                 setDriveFiles(files);
             } else {
                 throw new Error("No provider token found.");
@@ -62,7 +68,7 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ assets, onUpload, onAddLink
             provider: 'google',
             options: {
                 redirectTo: window.location.origin,
-                scopes: 'https://www.googleapis.com/auth/drive.file',
+                scopes: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file',
                 queryParams: { access_type: 'offline', prompt: 'consent select_account' },
             }
         });

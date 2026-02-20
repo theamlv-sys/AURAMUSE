@@ -23,7 +23,6 @@ import { stripeService } from './services/stripeService';
 import { Session } from '@supabase/supabase-js';
 
 const App: React.FC = () => {
-    console.log("DEBUG: ENV URL", import.meta.env.VITE_SUPABASE_URL);
     // --- CORE STATE ---
     const [hasAccess, setHasAccess] = useState(false);
     const [isInitializing, setIsInitializing] = useState(true);
