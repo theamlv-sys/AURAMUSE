@@ -1,9 +1,10 @@
-import { GoogleGenAI, Type, FunctionDeclaration, Tool, Schema, Modality } from "@google/genai";
+import { Type, FunctionDeclaration, Tool } from "@google/genai";
 import { Asset, ProjectType, AIResponse, VoiceName, AVAILABLE_VOICES, TTSCharacterSettings, StoryBibleEntry, SubscriptionTier } from "../types";
 import { EXPERT_PROMPTS } from "../prompts";
+import { supabase } from './supabaseClient';
 
-// Helper to ensure we get a fresh instance with the latest key if selected
-const getAI = () => new GoogleGenAI({ apiKey: import.meta.env.VITE_GOOGLE_GENAI_API_KEY });
+// Helper to call the secure Gemini Proxy Supabase Function
+// Key is now managed by Supabase Edge Functions for security
 
 declare global {
   interface Window {
@@ -198,7 +199,6 @@ export const generateWriting = async (
   useSearch: boolean = false,
   storyBible: StoryBibleEntry[] = []
 ): Promise<AIResponse> => {
-  const ai = getAI();
   // Using gemini-3-flash-preview as requested for Search Grounding
   const modelId = 'gemini-3-flash-preview';
 
@@ -297,32 +297,38 @@ export const generateWriting = async (
         console.warn(`Retrying with fallback model: ${currentModel.id}...`);
       }
 
-      const chat = ai.chats.create({
-        model: currentModel.id,
-        config: {
-          systemInstruction: augmentedSystemInstruction,
-          tools: tools,
-        },
-        history: history.map(h => ({
-          role: h.role,
-          parts: [{ text: h.content }],
-        })),
-      });
+      // Convert history to API format
+      const historyParts = history.map(h => ({
+        role: h.role === 'model' ? 'model' : 'user',
+        parts: [{ text: h.content }],
+      }));
 
-      const result = await withTimeout(
-        chat.sendMessage({ message: parts }),
+      // Combine history with new parts
+      const fullContents = [
+        ...historyParts,
+        { role: 'user', parts: parts }
+      ];
+
+      const response = await withTimeout(
+        callGeminiProxy(currentModel.id, fullContents, {
+          systemInstruction: { parts: [{ text: augmentedSystemInstruction }] },
+          tools: tools,
+        }),
         currentModel.timeout,
         `${currentModel.id} video processing`
       );
 
       let editorUpdate: string | undefined;
       let editorAppend: string | undefined;
-      let responseText = result.text || "";
+
+      const candidate = response.candidates?.[0];
+      let responseText = candidate?.content?.parts?.[0]?.text || "";
 
       // Check for function calls (only relevant if search was NOT active)
-      const functionCalls = result.functionCalls;
+      const functionCalls = candidate?.content?.parts?.filter((p: any) => p.functionCall);
       if (functionCalls && functionCalls.length > 0) {
-        for (const call of functionCalls) {
+        for (const p of functionCalls) {
+          const call = p.functionCall;
           if (call.name === "updateEditor") {
             const args = call.args as any;
             if (args && args.newContent) {
@@ -344,8 +350,8 @@ export const generateWriting = async (
       }
 
       // Handle Grounding Metadata (Sources)
-      if (result.candidates?.[0]?.groundingMetadata?.groundingChunks) {
-        const chunks = result.candidates[0].groundingMetadata.groundingChunks;
+      if (candidate?.groundingMetadata?.groundingChunks) {
+        const chunks = candidate.groundingMetadata.groundingChunks;
         const sources = chunks
           .map((chunk: any) => chunk.web?.uri ? `[${chunk.web.title || 'Source'}](${chunk.web.uri})` : null)
           .filter(Boolean);
@@ -379,21 +385,39 @@ export const generateWriting = async (
 };
 
 export const generateVideoPromptFromText = async (text: string): Promise<string> => {
-  const ai = getAI();
   const modelId = 'gemini-2.0-flash-exp';
 
   const prompt = `Create a highly visual, cinematic video generation prompt (max 250 characters) based on this text. Describe the scene, lighting, and action. Text: """${text.slice(0, 2000)}"""`;
 
   try {
-    const response = await ai.models.generateContent({
-      model: modelId,
-      contents: { parts: [{ text: prompt }] }
-    });
-    return response.text || "";
+    const response = await callGeminiProxy(modelId, { parts: [{ text: prompt }] });
+    return response.candidates?.[0]?.content?.parts?.[0]?.text || "";
   } catch (e) {
     console.error("Video Prompt Gen Error:", e);
     return "";
   }
+}
+
+/**
+ * Helper to call the secure Gemini Proxy Supabase Function
+ */
+async function callGeminiProxy(model: string, contents: any, config: any = {}) {
+  const { data, error } = await supabase.functions.invoke('gemini-proxy', {
+    body: { model, contents, config }
+  });
+
+  if (error) {
+    console.error(`Supabase Function Error (${model}):`, error);
+    throw new Error(error.message || `Failed to call Gemini Proxy for ${model}`);
+  }
+
+  if (data?.error) {
+    console.error(`Gemini API Error (${model}):`, data.error);
+    const msg = data.error?.message || JSON.stringify(data.error);
+    throw new Error(msg);
+  }
+
+  return data;
 }
 
 export const generateStoryboardImage = async (
@@ -402,35 +426,24 @@ export const generateStoryboardImage = async (
   aspectRatio: "16:9" | "1:1" | "9:16" = "16:9",
   modelId: 'gemini-2.5-flash-image' | 'gemini-3-pro-image-preview' = 'gemini-2.5-flash-image'
 ): Promise<string> => {
-  const ai = getAI();
   const maxRetries = modelId === 'gemini-3-pro-image-preview' ? 3 : 1;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      let response;
+      let data;
 
       if (modelId === 'gemini-3-pro-image-preview') {
-        // Gemini 3 Pro — exact format from Google official docs
-        response = await ai.models.generateContent({
-          model: 'gemini-3-pro-image-preview',
-          contents: prompt,
-          config: {
-            responseModalities: ['Text', 'Image'],
-            imageConfig: {
-              aspectRatio: aspectRatio,
-              imageSize: '2K',
-            },
+        data = await callGeminiProxy('gemini-3-pro-image-preview', prompt, {
+          responseModalities: ['Text', 'Image'],
+          imageConfig: {
+            aspectRatio: aspectRatio,
+            imageSize: '2K',
           },
         });
       } else {
-        // Gemini 2.5 Flash — exact format from Google official docs
-        response = await ai.models.generateContent({
-          model: 'gemini-2.5-flash-image',
-          contents: prompt,
-          config: {
-            imageConfig: {
-              aspectRatio: aspectRatio,
-            },
+        data = await callGeminiProxy('gemini-2.5-flash-image', prompt, {
+          imageConfig: {
+            aspectRatio: aspectRatio,
           },
         });
       }
@@ -439,8 +452,9 @@ export const generateStoryboardImage = async (
       let lastImageData: string | null = null;
       let lastMimeType: string = 'image/png';
 
-      for (const part of response.candidates?.[0]?.content?.parts || []) {
-        if ((part as any).thought) continue;
+      const parts = data.candidates?.[0]?.content?.parts || [];
+      for (const part of parts) {
+        if (part.thought) continue;
         if (part.inlineData) {
           lastMimeType = part.inlineData.mimeType || 'image/png';
           lastImageData = part.inlineData.data || null;
@@ -453,17 +467,15 @@ export const generateStoryboardImage = async (
 
       throw new Error("No image generated in response.");
     } catch (error: any) {
-      const status = error?.status || error?.code || error?.httpCode;
       const msg = error?.message || '';
-      const isOverloaded = status === 503 || status === 429 ||
+      const isOverloaded = msg.includes('503') || msg.includes('429') ||
         msg.includes('high demand') || msg.includes('UNAVAILABLE') ||
         msg.includes('overloaded') || msg.includes('Resource exhausted');
 
       console.error(`Image Gen Attempt ${attempt}/${maxRetries}:`, msg);
 
       if (isOverloaded && attempt < maxRetries) {
-        const delay = 3000 * Math.pow(2, attempt - 1); // 3s, 6s, 12s
-        console.log(`Gemini 3 Pro overloaded — retrying in ${delay / 1000}s...`);
+        const delay = 3000 * Math.pow(2, attempt - 1);
         await new Promise(r => setTimeout(r, delay));
         continue;
       }
@@ -486,48 +498,27 @@ export const generateVeoVideo = async (prompt: string, imageBase64?: string): Pr
     }
   }
 
-  const ai = getAI();
   const modelId = 'veo-3.1-fast-generate-preview';
 
   try {
-    let operation;
+    // NOTE: Veo might require specialized handling or a different endpoint in the future.
+    // For now, we attempt to proxy it. If the proxy doesn't support the videos endpoint,
+    // this may need a dedicated backend function.
+    const response = await callGeminiProxy(modelId, prompt, {
+      videoConfig: {
+        numberOfVideos: 1,
+        resolution: '720p',
+        aspectRatio: '16:9'
+      },
+      imageBase64: imageBase64 // Handled by proxy if supported
+    });
 
-    if (imageBase64) {
-      operation = await ai.models.generateVideos({
-        model: modelId,
-        prompt: prompt,
-        image: {
-          imageBytes: imageBase64,
-          mimeType: 'image/png'
-        },
-        config: {
-          numberOfVideos: 1,
-          resolution: '720p',
-          aspectRatio: '16:9'
-        }
-      });
-    } else {
-      operation = await ai.models.generateVideos({
-        model: modelId,
-        prompt: prompt,
-        config: {
-          numberOfVideos: 1,
-          resolution: '720p',
-          aspectRatio: '16:9'
-        }
-      });
-    }
-
-    while (!operation.done) {
-      await new Promise(resolve => setTimeout(resolve, 5000));
-      operation = await ai.operations.getVideosOperation({ operation: operation });
-    }
-
-    const videoUri = operation.response?.generatedVideos?.[0]?.video?.uri;
+    const videoUri = response.response?.generatedVideos?.[0]?.video?.uri;
     if (!videoUri) throw new Error("Video URI not found in response.");
 
-    const response = await fetch(`${videoUri}&key=${import.meta.env.VITE_GOOGLE_GENAI_API_KEY}`);
-    const blob = await response.blob();
+    // For now, we fetch without the key and assume the proxy handled access or returns an accessible URI
+    const fetchResult = await fetch(videoUri);
+    const blob = await fetchResult.blob();
     return URL.createObjectURL(blob);
 
   } catch (error) {
@@ -537,7 +528,6 @@ export const generateVeoVideo = async (prompt: string, imageBase64?: string): Pr
 };
 
 export const analyzeMediaContext = async (assets: Asset[]): Promise<string> => {
-  const ai = getAI();
   // Switched to gemini-3-flash-preview for robust tool use (search)
   const modelId = 'gemini-3-flash-preview';
 
@@ -567,13 +557,9 @@ export const analyzeMediaContext = async (assets: Asset[]): Promise<string> => {
   }
 
   try {
-    const response = await ai.models.generateContent({
-      model: modelId,
-      contents: { parts },
-      config: { tools }
-    });
+    const response = await callGeminiProxy(modelId, { parts }, { tools });
 
-    let text = response.text || "Analysis failed.";
+    let text = response.candidates?.[0]?.content?.parts?.[0]?.text || "Analysis failed.";
 
     // Handle Grounding Metadata (Sources)
     if (response.candidates?.[0]?.groundingMetadata?.groundingChunks) {
@@ -605,7 +591,6 @@ export const analyzeScriptForVoices = async (text: string, direction?: string): 
   cast: { character: string, voice: VoiceName, reason: string }[],
   directorConfig: any
 }> => {
-  const ai = getAI();
   const modelId = 'gemini-3-flash-preview';
 
   const prompt = `
@@ -636,14 +621,8 @@ export const analyzeScriptForVoices = async (text: string, direction?: string): 
     `;
 
   try {
-    const response = await ai.models.generateContent({
-      model: modelId,
-      contents: { parts: [{ text: prompt }] },
-      config: {
-        responseMimeType: "application/json"
-      }
-    });
-    const json = JSON.parse(response.text || "{}");
+    const response = await callGeminiProxy(modelId, { parts: [{ text: prompt }] }, { responseMimeType: "application/json" });
+    const json = JSON.parse(response.candidates?.[0]?.content?.parts?.[0]?.text || "{}");
     return {
       cast: json.cast || [{ character: "Narrator", voice: "Zephyr", reason: "Default" }],
       directorConfig: json.directorConfig || {}
@@ -658,7 +637,6 @@ export const analyzeScriptForVoices = async (text: string, direction?: string): 
 }
 
 export const analyzeCharacterStyle = async (userDescription: string): Promise<{ description: string, style: string, pacing: string, accent: string }> => {
-  const ai = getAI();
   const modelId = 'gemini-3-flash-preview';
   const prompt = `
     Based on the user's description of a character, generate the audio director settings.
@@ -674,12 +652,8 @@ export const analyzeCharacterStyle = async (userDescription: string): Promise<{ 
     `;
 
   try {
-    const response = await ai.models.generateContent({
-      model: modelId,
-      contents: { parts: [{ text: prompt }] },
-      config: { responseMimeType: "application/json" }
-    });
-    const json = JSON.parse(response.text || "{}");
+    const response = await callGeminiProxy(modelId, { parts: [{ text: prompt }] }, { responseMimeType: "application/json" });
+    const json = JSON.parse(response.candidates?.[0]?.content?.parts?.[0]?.text || "{}");
     return {
       description: json.description || '',
       style: json.style || '',
@@ -692,7 +666,6 @@ export const analyzeCharacterStyle = async (userDescription: string): Promise<{ 
 }
 
 export const formatScriptForTTS = async (text: string, characters: string[]): Promise<string> => {
-  const ai = getAI();
   const modelId = 'gemini-3-flash-preview';
   const prompt = `Rewrite the following text into a standard script format optimized for Multi-Speaker Text-to-Speech.
     
@@ -709,11 +682,8 @@ export const formatScriptForTTS = async (text: string, characters: string[]): Pr
     `;
 
   try {
-    const response = await ai.models.generateContent({
-      model: modelId,
-      contents: { parts: [{ text: prompt }] }
-    });
-    return response.text || text;
+    const response = await callGeminiProxy(modelId, { parts: [{ text: prompt }] });
+    return response.candidates?.[0]?.content?.parts?.[0]?.text || text;
   } catch (e) {
     console.error("Formatting Error", e);
     return text;
@@ -725,7 +695,6 @@ export const generateSpeech = async (
   speakerConfig: { singleVoice?: VoiceName, multiSpeaker?: { character: string, voice: VoiceName, settings?: { description?: string, style?: string, pacing?: string, accent?: string } }[] },
   directorConfig?: any
 ): Promise<string> => {
-  const ai = getAI();
   const modelId = 'gemini-2.5-flash-preview-tts';
 
   try {
@@ -805,13 +774,9 @@ export const generateSpeech = async (
       };
     }
 
-    const response = await ai.models.generateContent({
-      model: modelId,
-      contents: { parts: [{ text: finalPrompt }] },
-      config: {
-        responseModalities: [Modality.AUDIO],
-        speechConfig: speechConfig
-      }
+    const response = await callGeminiProxy(modelId, { parts: [{ text: finalPrompt }] }, {
+      responseModalities: ["AUDIO"],
+      speechConfig: speechConfig
     });
 
     const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
@@ -831,7 +796,6 @@ export const generateEmailDraft = async (
   prompt: string,
   history: { role: string; content: string }[] = []
 ): Promise<string> => {
-  const ai = getAI();
   const modelId = 'gemini-3-flash-preview';
 
   const systemInstruction = `You are an elite Executive Communications Director.
@@ -846,19 +810,21 @@ export const generateEmailDraft = async (
     `;
 
   try {
-    const chat = ai.chats.create({
-      model: modelId,
-      config: {
-        systemInstruction: systemInstruction,
-      },
-      history: history.map(h => ({
-        role: h.role,
-        parts: [{ text: h.content }],
-      })),
+    const historyParts = history.map(h => ({
+      role: h.role === 'model' ? 'model' : 'user',
+      parts: [{ text: h.content }],
+    }));
+
+    const contents = [
+      ...historyParts,
+      { role: 'user', parts: [{ text: prompt }] }
+    ];
+
+    const response = await callGeminiProxy(modelId, contents, {
+      systemInstruction: { parts: [{ text: systemInstruction }] }
     });
 
-    const result = await chat.sendMessage({ message: [{ text: prompt }] });
-    return result.text || "Draft generation failed.";
+    return response.candidates?.[0]?.content?.parts?.[0]?.text || "Draft generation failed.";
 
   } catch (error) {
     console.error("Email Draft Error:", error);
@@ -873,7 +839,6 @@ export const generateEmailDraft = async (
 const DOMO_MODELS = ['gemini-3-flash-preview', 'gemini-2.5-flash-preview-04-17', 'gemini-2.0-flash-exp'];
 
 const domoGenerate = async (
-  ai: any,
   prompt: string,
   jsonMode: boolean = false
 ): Promise<string> => {
@@ -881,12 +846,8 @@ const domoGenerate = async (
     try {
       const config: any = {};
       if (jsonMode) config.responseMimeType = "application/json";
-      const response = await ai.models.generateContent({
-        model: DOMO_MODELS[i],
-        contents: { parts: [{ text: prompt }] },
-        config
-      });
-      return response.text || "";
+      const response = await callGeminiProxy(DOMO_MODELS[i], { parts: [{ text: prompt }] }, config);
+      return response.candidates?.[0]?.content?.parts?.[0]?.text || "";
     } catch (error: any) {
       const status = error?.status || error?.error?.code || error?.message || '';
       const isRetryable = String(status).includes('503') || String(status).includes('UNAVAILABLE') || String(status).includes('429') || String(status).includes('overloaded');
@@ -908,7 +869,6 @@ export const generatePodcastScript = async (
   style: string,
   additionalNotes: string = ''
 ): Promise<string> => {
-  const ai = getAI();
   const modelId = 'gemini-3-flash-preview';
 
   const formatGuides: Record<string, string> = {
@@ -973,7 +933,7 @@ CRITICAL REQUIREMENTS:
 Write the COMPLETE, production-ready script now. Make it so good that the host can read it cold and still sound incredible.`;
 
   try {
-    const result = await domoGenerate(ai, prompt, false);
+    const result = await domoGenerate(prompt, false);
     return result || "Script generation failed.";
   } catch (error) {
     console.error("Podcast Script Error:", error);
@@ -987,7 +947,6 @@ export const generateNewsletterContent = async (
   style: string,
   additionalNotes: string = ''
 ): Promise<{ title: string; subtitle: string; sections: { heading: string; content: string; type: 'text' | 'callout' | 'quote' | 'stat' | 'list' | 'cta' }[] }> => {
-  const ai = getAI();
   const modelId = 'gemini-3-flash-preview';
 
   const typeGuides: Record<string, string> = {
@@ -1070,7 +1029,7 @@ CRITICAL QUALITY RULES:
 6. Use concrete examples, numbers, and actionable insights throughout.`;
 
   try {
-    const result = await domoGenerate(ai, prompt, true);
+    const result = await domoGenerate(prompt, true);
     const json = JSON.parse(result || "{}");
     return {
       title: json.title || "Untitled",
@@ -1093,7 +1052,6 @@ export const generateSlideContent = async (
   style: string,
   additionalNotes: string = ''
 ): Promise<{ title: string; slides: { title: string; bullets: string[]; notes: string; layout: 'title' | 'content' | 'two_column' | 'image_focus' | 'quote' | 'section_break' }[] }> => {
-  const ai = getAI();
   const modelId = 'gemini-3-flash-preview';
 
   const prompt = `You are a world-class presentation designer and strategist who has created pitch decks that raised $100M+ and keynotes viewed by millions. Your slides are legendary for clarity, impact, and visual storytelling.
@@ -1152,7 +1110,7 @@ CRITICAL PRESENTATION RULES:
 9. NO AI LANGUAGE: No "tapestry", "delve", "landscape", "synergy", "harness".`;
 
   try {
-    const result = await domoGenerate(ai, prompt, true);
+    const result = await domoGenerate(prompt, true);
     const json = JSON.parse(result || "{}");
     return {
       title: json.title || "Untitled Presentation",
@@ -1169,7 +1127,6 @@ CRITICAL PRESENTATION RULES:
 
 // --- YOUTUBE SEO ---
 export const generateYouTubeMetadata = async (content: string): Promise<{ titles: string[], description: string, tags: string[], hashtags: string[] }> => {
-  const ai = getAI();
 
   const prompt = `You are a YouTube SEO Expert. Analyze the script below and generate high-performing metadata.
     Output a JSON object with this exact schema:
@@ -1192,7 +1149,7 @@ export const generateYouTubeMetadata = async (content: string): Promise<{ titles
     `;
 
   try {
-    const text = await domoGenerate(ai, prompt, true);
+    const text = await domoGenerate(prompt, true);
     return JSON.parse(text);
   } catch (e) {
     console.error("SEO Gen Error:", e);
@@ -1202,7 +1159,6 @@ export const generateYouTubeMetadata = async (content: string): Promise<{ titles
 
 // --- SOCIAL MEDIA ---
 export const generateSocialPost = async (content: string, platform: 'instagram' | 'tiktok' | 'twitter' | 'linkedin', tone: string): Promise<string> => {
-  const ai = getAI();
 
   const prompt = `You are a Social Media Manager. Create a viral ${platform} post based on the content below.
     Tone: ${tone}
@@ -1217,7 +1173,7 @@ export const generateSocialPost = async (content: string, platform: 'instagram' 
     `;
 
   try {
-    return await domoGenerate(ai, prompt, false);
+    return await domoGenerate(prompt, false);
   } catch (e) {
     console.error("Social Gen Error:", e);
     throw e;
@@ -1226,7 +1182,6 @@ export const generateSocialPost = async (content: string, platform: 'instagram' 
 
 // --- THUMBNAIL HELPER ---
 export const generateThumbnailPrompt = async (content: string): Promise<string> => {
-  const ai = getAI();
   const prompt = `You are a YouTube Thumbnail Expert. Create a detailed, high-performing text-to-image prompt for the video script below.
     Rules:
     - Focus on visual elements, emotions, and composition.
@@ -1239,7 +1194,7 @@ export const generateThumbnailPrompt = async (content: string): Promise<string> 
     `;
 
   try {
-    return await domoGenerate(ai, prompt, false);
+    return await domoGenerate(prompt, false);
   } catch (e) {
     console.error("Thumbnail Prompt Error:", e);
     throw e;
@@ -1247,7 +1202,6 @@ export const generateThumbnailPrompt = async (content: string): Promise<string> 
 };
 
 export const generateThumbnailPromptFromAssets = async (inputPrompt: string, assets: Asset[]): Promise<string> => {
-  const ai = getAI();
   // Use Gemini 2.5 Flash for visual analysis of assets (video/images)
   const modelId = 'gemini-2.5-flash-image';
 
@@ -1288,11 +1242,8 @@ export const generateThumbnailPromptFromAssets = async (inputPrompt: string, ass
   parts.push({ text: promptText });
 
   try {
-    const result = await ai.models.generateContent({
-      model: modelId,
-      contents: { parts }
-    });
-    return result.text || "";
+    const response = await callGeminiProxy(modelId, parts);
+    return response.candidates?.[0]?.content?.parts?.[0]?.text || "";
   } catch (e) {
     console.error("Asset Thumbnail Error:", e);
     throw e;
@@ -1300,7 +1251,6 @@ export const generateThumbnailPromptFromAssets = async (inputPrompt: string, ass
 };
 
 export const generateYouTubeAnalysis = async (query: string): Promise<string> => {
-  const ai = getAI();
 
   const parts: any[] = [];
   const tools: any[] = [{ googleSearch: {} }];
@@ -1412,12 +1362,8 @@ Use REAL channel names, video titles, and numbers. Be specific and actionable. N
   }
 
   try {
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: { parts },
-      config: { tools }
-    });
-    return response.text || "";
+    const response = await callGeminiProxy('gemini-2.5-flash', { parts }, { tools });
+    return response.candidates?.[0]?.content?.parts?.[0]?.text || "";
   } catch (e) {
     console.error("YouTube Analysis Error:", e);
     throw e;

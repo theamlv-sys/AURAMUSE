@@ -16,7 +16,6 @@ interface YouTubeToolsProps {
 }
 
 const YouTubeTools: React.FC<YouTubeToolsProps> = ({ content, userTier, initialTab = 'seo', assets, onUpload, onAddLink, onDelete, providerToken }) => {
-    const apiKey = import.meta.env.VITE_GOOGLE_GENAI_API_KEY || import.meta.env.VITE_GEMINI_API_KEY || '';
     const [activeTab, setActiveTab] = useState<'seo' | 'thumbnail'>('seo');
 
     // Update activeTab when initialTab changes (e.g. clicking different sidebar button)

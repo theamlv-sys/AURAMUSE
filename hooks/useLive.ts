@@ -110,7 +110,14 @@ export const useLive = ({ onUpdateEditor, onAppendEditor, onTriggerSearch, onCon
 
             mediaStreamRef.current = stream;
 
-            const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GOOGLE_GENAI_API_KEY });
+            const apiKey = import.meta.env.VITE_GOOGLE_GENAI_API_KEY;
+            if (!apiKey) {
+                alert("Live Voice requires a VITE_GOOGLE_GENAI_API_KEY in .env (WebSockets cannot yet be proxied safely).");
+                setIsConnecting(false);
+                stop();
+                return;
+            }
+            const ai = new GoogleGenAI({ apiKey });
 
             // Setup Output Audio
             const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
