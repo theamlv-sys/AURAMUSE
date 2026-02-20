@@ -151,7 +151,7 @@ const NotesMode: React.FC<NotesModeProps> = ({ onBack, initialContent = '', onSa
             provider: 'google',
             options: {
                 redirectTo: window.location.origin,
-                scopes: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file',
+                scopes: 'https://www.googleapis.com/auth/drive.file',
                 queryParams: { access_type: 'offline', prompt: 'consent select_account' },
             }
         });
