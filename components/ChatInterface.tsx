@@ -115,8 +115,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           };
           onAddAsset(newAsset);
           setMessages(prev => [...prev, { role: 'model', content: "Here is your storyboard image.", type: 'image', mediaUrl: b64 }]);
-        } catch (e) {
-          setMessages(prev => [...prev, { role: 'model', content: "Failed to generate image. Please try again." }]);
+        } catch (e: any) {
+          const errMsg = e?.message || "Failed to generate image. Please try again.";
+          setMessages(prev => [...prev, { role: 'model', content: errMsg }]);
         }
 
       } else if (lowerInput.includes('analyze') && assets.length > 0) {

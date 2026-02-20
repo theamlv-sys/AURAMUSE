@@ -403,58 +403,79 @@ export const generateStoryboardImage = async (
   modelId: 'gemini-2.5-flash-image' | 'gemini-3-pro-image-preview' = 'gemini-2.5-flash-image'
 ): Promise<string> => {
   const ai = getAI();
+  const maxRetries = modelId === 'gemini-3-pro-image-preview' ? 3 : 1;
 
-  try {
-    let response;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      let response;
 
-    if (modelId === 'gemini-3-pro-image-preview') {
-      // Gemini 3 Pro — exact format from Google official docs
-      response = await ai.models.generateContent({
-        model: 'gemini-3-pro-image-preview',
-        contents: prompt,
-        config: {
-          responseModalities: ['Text', 'Image'],
-          imageConfig: {
-            aspectRatio: aspectRatio,
-            imageSize: '2K',
+      if (modelId === 'gemini-3-pro-image-preview') {
+        // Gemini 3 Pro — exact format from Google official docs
+        response = await ai.models.generateContent({
+          model: 'gemini-3-pro-image-preview',
+          contents: prompt,
+          config: {
+            responseModalities: ['Text', 'Image'],
+            imageConfig: {
+              aspectRatio: aspectRatio,
+              imageSize: '2K',
+            },
           },
-        },
-      });
-    } else {
-      // Gemini 2.5 Flash — exact format from Google official docs
-      response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: prompt,
-        config: {
-          imageConfig: {
-            aspectRatio: aspectRatio,
+        });
+      } else {
+        // Gemini 2.5 Flash — exact format from Google official docs
+        response = await ai.models.generateContent({
+          model: 'gemini-2.5-flash-image',
+          contents: prompt,
+          config: {
+            imageConfig: {
+              aspectRatio: aspectRatio,
+            },
           },
-        },
-      });
-    }
-
-    // Gemini 3 Pro is a thinking model — skip thought parts, grab last final image
-    let lastImageData: string | null = null;
-    let lastMimeType: string = 'image/png';
-
-    for (const part of response.candidates?.[0]?.content?.parts || []) {
-      if ((part as any).thought) continue;
-      if (part.inlineData) {
-        lastMimeType = part.inlineData.mimeType || 'image/png';
-        lastImageData = part.inlineData.data || null;
+        });
       }
-    }
 
-    if (lastImageData) {
-      return `data:${lastMimeType};base64,${lastImageData}`;
-    }
+      // Gemini 3 Pro is a thinking model — skip thought parts, grab last final image
+      let lastImageData: string | null = null;
+      let lastMimeType: string = 'image/png';
 
-    throw new Error("No image generated in response.");
-  } catch (error: any) {
-    console.error("Image Gen Error:", error?.message || error);
-    console.error("Model:", modelId, "| Full error:", JSON.stringify(error, null, 2));
-    throw error;
+      for (const part of response.candidates?.[0]?.content?.parts || []) {
+        if ((part as any).thought) continue;
+        if (part.inlineData) {
+          lastMimeType = part.inlineData.mimeType || 'image/png';
+          lastImageData = part.inlineData.data || null;
+        }
+      }
+
+      if (lastImageData) {
+        return `data:${lastMimeType};base64,${lastImageData}`;
+      }
+
+      throw new Error("No image generated in response.");
+    } catch (error: any) {
+      const status = error?.status || error?.code || error?.httpCode;
+      const msg = error?.message || '';
+      const isOverloaded = status === 503 || status === 429 ||
+        msg.includes('high demand') || msg.includes('UNAVAILABLE') ||
+        msg.includes('overloaded') || msg.includes('Resource exhausted');
+
+      console.error(`Image Gen Attempt ${attempt}/${maxRetries}:`, msg);
+
+      if (isOverloaded && attempt < maxRetries) {
+        const delay = 3000 * Math.pow(2, attempt - 1); // 3s, 6s, 12s
+        console.log(`Gemini 3 Pro overloaded — retrying in ${delay / 1000}s...`);
+        await new Promise(r => setTimeout(r, delay));
+        continue;
+      }
+
+      if (isOverloaded) {
+        throw new Error("Gemini 3 Pro is experiencing high demand right now. Please try again in a moment, or switch to Gemini 2.5 Flash.");
+      }
+      throw error;
+    }
   }
+
+  throw new Error("Image generation failed after retries.");
 };
 
 export const generateVeoVideo = async (prompt: string, imageBase64?: string): Promise<string> => {
