@@ -45,6 +45,17 @@ export const persistenceService = {
         }));
     },
 
+    async deleteVersion(id: string) {
+        const { error } = await supabase
+            .from('project_versions')
+            .delete()
+            .eq('id', id);
+        if (error) {
+            console.error("Error deleting version:", error);
+            throw error;
+        }
+    },
+
     // --- PROJECTS ---
     async saveProject(project: SavedProject) {
         const { data: userData } = await supabase.auth.getUser();

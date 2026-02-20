@@ -98,7 +98,7 @@ const CalendarMode: React.FC<CalendarModeProps> = ({ onBack, userTier = 'FREE', 
             provider: 'google',
             options: {
                 redirectTo: window.location.origin,
-                scopes: 'https://www.googleapis.com/auth/calendar',
+                scopes: 'https://www.googleapis.com/auth/calendar.events',
                 queryParams: { access_type: 'offline', prompt: 'consent select_account' },
             }
         });

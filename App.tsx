@@ -656,7 +656,10 @@ const App: React.FC = () => {
                         versionHistory={currentVersionHistory}
                         onSnapshot={handleSnapshot}
                         onRestoreVersion={setContent}
-                        onDeleteSnapshot={(id) => setVersionHistory(p => p.filter(v => v.id !== id))}
+                        onDeleteSnapshot={(id) => {
+                            setVersionHistory(p => p.filter(v => v.id !== id));
+                            persistenceService.deleteVersion(id).catch(err => console.error("Failed to delete snapshot:", err));
+                        }}
                         onSave={handleSaveProject}
                         theme={theme}
                         onExportGoogleDoc={async (t, c) => {
@@ -674,7 +677,7 @@ const App: React.FC = () => {
                                     const { error } = await supabase.auth.signInWithOAuth({
                                         provider: 'google',
                                         options: {
-                                            scopes: 'https://www.googleapis.com/auth/drive.file',
+                                            scopes: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file',
                                             redirectTo: window.location.origin
                                         }
                                     });
