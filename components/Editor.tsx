@@ -315,26 +315,34 @@ const Editor: React.FC<EditorProps> = ({ content, onChange, title, onTitleChange
                                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
                                         <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clipRule="evenodd" />
                                     </svg>
-                                    {isExportingPdf ? 'Preparing...' : 'Save as PDF'}
                                 </button>
-                                <div className={`h-px ${isDark ? 'bg-gray-700' : 'bg-gray-100'} mx-2`}></div>
-                                <div className={`h-px ${isDark ? 'bg-gray-700' : 'bg-gray-100'} mx-2`}></div>
+                                <div className={`h-px ${isDark ? 'bg-gray-700' : 'bg-gray-100'} mx-2 mt-1`}></div>
 
                                 {/* EXPORT VERSION TO DOCS */}
                                 <button
                                     onClick={(e) => {
                                         e.stopPropagation();
+                                        const btn = e.currentTarget;
+                                        const originalText = btn.textContent;
+                                        btn.textContent = '⏳ Exporting...';
+                                        btn.disabled = true;
                                         if (onExportGoogleDoc) {
                                             onExportGoogleDoc(`${title} - v${new Date(v.timestamp).toLocaleTimeString()}`, v.content);
+                                            setTimeout(() => {
+                                                btn.textContent = originalText || 'Export to Google Docs';
+                                                btn.disabled = false;
+                                            }, 3000);
                                         } else {
                                             alert("Google Drive export not available.");
+                                            btn.textContent = originalText || 'Export to Google Docs';
+                                            btn.disabled = false;
                                         }
                                     }}
-                                    className={`w-full text-left px-4 py-3 text-sm ${textMain} hover:${bgSec} transition-colors flex items-center gap-2`}
+                                    className="w-full mt-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-all duration-200 flex items-center justify-center gap-2 shadow-md hover:shadow-lg cursor-pointer disabled:opacity-50 disabled:cursor-wait"
                                     title="Export this version to Google Docs"
                                 >
-                                    <span className="text-blue-500">📄</span>
-                                    Export Version to Docs
+                                    <span>📄</span>
+                                    Export to Google Docs
                                 </button>
                             </div>
                         ))}

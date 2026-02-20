@@ -137,6 +137,10 @@ const App: React.FC = () => {
                 sessionStorage.setItem('muse_gmail_token', currentSession.provider_token);
                 sessionStorage.removeItem('muse_connecting_gmail');
             }
+            // ALWAYS store the provider_token for Drive/Docs exports
+            if (currentSession.provider_token) {
+                sessionStorage.setItem('muse_drive_token', currentSession.provider_token);
+            }
         };
 
         const loadUserData = async (currentSession: Session) => {
@@ -668,16 +672,34 @@ const App: React.FC = () => {
                                 setShowSubModal(true);
                                 return;
                             }
-                            const { data: { session } } = await supabase.auth.getSession();
-                            if (session?.provider_token) {
-                                await googleDriveService.createDoc(session.provider_token, t, c);
-                                alert("Successfully exported to Google Docs!");
+                            const { data: { session: freshSession } } = await supabase.auth.getSession();
+                            const driveToken = freshSession?.provider_token || sessionStorage.getItem('muse_drive_token');
+                            if (driveToken) {
+                                try {
+                                    await googleDriveService.createDoc(driveToken, t, c);
+                                    alert('✅ Successfully exported to Google Docs!');
+                                } catch (err: any) {
+                                    console.error('Export failed:', err);
+                                    // Token might be expired — prompt re-auth
+                                    sessionStorage.removeItem('muse_drive_token');
+                                    if (confirm('Export failed — your Google session may have expired. Re-connect to Google?')) {
+                                        sessionStorage.setItem('muse_connecting_drive', 'true');
+                                        await supabase.auth.signInWithOAuth({
+                                            provider: 'google',
+                                            options: {
+                                                scopes: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file',
+                                                redirectTo: window.location.origin
+                                            }
+                                        });
+                                    }
+                                }
                             } else {
-                                if (confirm("You are not connected to Google. Would you like to connect now to enable exporting?")) {
+                                if (confirm('You need to connect to Google Drive to export. Connect now?')) {
+                                    sessionStorage.setItem('muse_connecting_drive', 'true');
                                     const { error } = await supabase.auth.signInWithOAuth({
                                         provider: 'google',
                                         options: {
-                                            scopes: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file',
+                                            scopes: 'https://www.googleapis.com/auth/drive.file',
                                             redirectTo: window.location.origin
                                         }
                                     });
@@ -691,11 +713,28 @@ const App: React.FC = () => {
                                 setShowSubModal(true);
                                 return;
                             }
-                            const { data: { session } } = await supabase.auth.getSession();
-                            if (session?.provider_token) {
-                                await googleDriveService.uploadFile(session.provider_token, t, c, 'text/plain');
+                            const { data: { session: freshSession } } = await supabase.auth.getSession();
+                            const driveToken = freshSession?.provider_token || sessionStorage.getItem('muse_drive_token');
+                            if (driveToken) {
+                                try {
+                                    await googleDriveService.uploadFile(driveToken, t, c, 'text/plain');
+                                    alert('✅ Successfully uploaded to Google Drive!');
+                                } catch (err: any) {
+                                    console.error('Upload failed:', err);
+                                    sessionStorage.removeItem('muse_drive_token');
+                                    alert('Upload failed — please re-connect to Google Drive.');
+                                }
                             } else {
-                                alert("Please sign in again");
+                                if (confirm('You need to connect to Google Drive to upload. Connect now?')) {
+                                    sessionStorage.setItem('muse_connecting_drive', 'true');
+                                    await supabase.auth.signInWithOAuth({
+                                        provider: 'google',
+                                        options: {
+                                            scopes: 'https://www.googleapis.com/auth/drive.file',
+                                            redirectTo: window.location.origin
+                                        }
+                                    });
+                                }
                             }
                         }}
                         isGmailConnected={isGmailConnected}
