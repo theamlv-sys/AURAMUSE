@@ -149,7 +149,6 @@ const NotesMode: React.FC<NotesModeProps> = ({ onBack, initialContent = '', onSa
         const { supabase } = await import('../services/supabaseClient');
         const { data: { user } } = await supabase.auth.getUser();
         const isAdmin = user?.email === 'auraassistantai@auradomo.com';
-
         await supabase.auth.signInWithOAuth({
             provider: 'google',
             options: {

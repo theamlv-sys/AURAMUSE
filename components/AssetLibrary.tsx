@@ -38,11 +38,6 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ assets, onUpload, onAddLink
     };
 
     const handleOpenDrivePicker = async () => {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user?.email !== 'auraassistantai@auradomo.com') {
-            alert('🚧 Google Drive media browser coming soon! You can still upload files directly.');
-            return;
-        }
         setShowDrivePicker(true);
         setIsLoadingDrive(true);
         setDriveAuthError(false);
@@ -64,11 +59,15 @@ const AssetLibrary: React.FC<AssetLibraryProps> = ({ assets, onUpload, onAddLink
     };
 
     const handleAuthorizeDrive = async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        const isAdmin = user?.email === 'auraassistantai@auradomo.com';
         await supabase.auth.signInWithOAuth({
             provider: 'google',
             options: {
                 redirectTo: window.location.origin,
-                scopes: 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file',
+                scopes: isAdmin
+                    ? 'https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file'
+                    : 'https://www.googleapis.com/auth/drive.file',
                 queryParams: { access_type: 'offline', prompt: 'consent select_account' },
             }
         });

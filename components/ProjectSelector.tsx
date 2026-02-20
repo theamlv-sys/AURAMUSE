@@ -171,13 +171,6 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
       return;
     }
 
-    // 2. Check Admin — only admin can browse all Drive files
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user?.email !== 'auraassistantai@auradomo.com') {
-      alert('🚧 Google Docs browser coming soon! You can still export your projects to Google Docs.');
-      return;
-    }
-
     setShowDrivePicker(true);
     setIsLoadingDrive(true);
     setDriveAuthError(false);
@@ -201,7 +194,6 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
   const handleAuthorizeDrive = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     const isAdmin = user?.email === 'auraassistantai@auradomo.com';
-
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {

@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Asset, Message, ProjectType, TTSState, StoryBibleEntry, SubscriptionTier } from '../types';
 import { generateWriting, generateStoryboardImage, generateVeoVideo, analyzeMediaContext } from '../services/geminiService';
+import { googleDriveService } from '../services/googleDriveService';
+import { supabase } from '../services/supabaseClient';
 import VeoModal from './VeoModal';
 import { useLive } from '../hooks/useLive';
 
@@ -274,10 +276,72 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 : `${isDark ? 'bg-gray-800 text-gray-200 border-gray-700' : 'bg-white text-gray-800 border-gray-100'} border rounded-bl-none`
                 }`}>
                 {msg.type === 'image' && msg.mediaUrl && (
-                  <img src={msg.mediaUrl} alt="Generated" className="rounded-lg mb-3 w-full object-cover max-h-60 border border-white/10" />
+                  <div>
+                    <img src={msg.mediaUrl} alt="Generated" className="rounded-lg mb-2 w-full object-cover max-h-60 border border-white/10" />
+                    <div className="flex gap-2 mb-2">
+                      <button
+                        onClick={() => {
+                          const a = document.createElement('a');
+                          a.href = msg.mediaUrl!;
+                          a.download = `storyboard_${Date.now()}.png`;
+                          a.click();
+                        }}
+                        className="text-xs px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-200 transition-all flex items-center gap-1"
+                      >
+                        ⬇️ Download
+                      </button>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const { data: { session } } = await supabase.auth.getSession();
+                            const driveToken = session?.provider_token || sessionStorage.getItem('muse_drive_token');
+                            if (!driveToken) { alert('Please connect Google Drive first.'); return; }
+                            const res = await fetch(msg.mediaUrl!);
+                            const blob = await res.blob();
+                            await googleDriveService.uploadBlob(driveToken, `Storyboard_${Date.now()}.png`, blob, 'image/png');
+                            alert('✅ Storyboard uploaded to Google Drive!');
+                          } catch (e: any) { alert('Upload failed: ' + e.message); }
+                        }}
+                        className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-all flex items-center gap-1"
+                      >
+                        ☁️ Save to Drive
+                      </button>
+                    </div>
+                  </div>
                 )}
                 {msg.type === 'video' && msg.mediaUrl && (
-                  <video src={msg.mediaUrl} controls className="rounded-lg mb-3 w-full max-h-60 border border-white/10" />
+                  <div>
+                    <video src={msg.mediaUrl} controls className="rounded-lg mb-2 w-full max-h-60 border border-white/10" />
+                    <div className="flex gap-2 mb-2">
+                      <button
+                        onClick={() => {
+                          const a = document.createElement('a');
+                          a.href = msg.mediaUrl!;
+                          a.download = `veo_video_${Date.now()}.mp4`;
+                          a.click();
+                        }}
+                        className="text-xs px-3 py-1.5 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-200 transition-all flex items-center gap-1"
+                      >
+                        ⬇️ Download
+                      </button>
+                      <button
+                        onClick={async () => {
+                          try {
+                            const { data: { session } } = await supabase.auth.getSession();
+                            const driveToken = session?.provider_token || sessionStorage.getItem('muse_drive_token');
+                            if (!driveToken) { alert('Please connect Google Drive first.'); return; }
+                            const res = await fetch(msg.mediaUrl!);
+                            const blob = await res.blob();
+                            await googleDriveService.uploadBlob(driveToken, `Veo_Video_${Date.now()}.mp4`, blob, 'video/mp4');
+                            alert('✅ Video uploaded to Google Drive!');
+                          } catch (e: any) { alert('Upload failed: ' + e.message); }
+                        }}
+                        className="text-xs px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-all flex items-center gap-1"
+                      >
+                        ☁️ Save to Drive
+                      </button>
+                    </div>
+                  </div>
                 )}
                 <div className="whitespace-pre-wrap text-sm leading-relaxed font-sans">{msg.content}</div>
 

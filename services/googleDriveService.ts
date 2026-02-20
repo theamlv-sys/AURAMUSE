@@ -150,5 +150,23 @@ export const googleDriveService = {
 
         const data = await res.json();
         return data.id;
+    },
+
+    // 5. Upload binary blob (images, videos) to Google Drive
+    async uploadBlob(token: string, fileName: string, blob: Blob, mimeType: string): Promise<string> {
+        const metadata = { name: fileName, mimeType };
+        const form = new FormData();
+        form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+        form.append('file', blob);
+
+        const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` },
+            body: form
+        });
+
+        if (!res.ok) throw new Error(`Drive Upload Error: ${res.statusText}`);
+        const data = await res.json();
+        return data.id;
     }
 };

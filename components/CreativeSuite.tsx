@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ProjectType } from '../types';
 import { generatePodcastScript, generateNewsletterContent, generateSlideContent, generateStoryboardImage } from '../services/geminiService';
+import { googleDriveService } from '../services/googleDriveService';
+import { supabase } from '../services/supabaseClient';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
 // @ts-ignore
@@ -485,6 +487,21 @@ export const CreativeSuite: React.FC<CreativeSuiteProps> = ({
                                 <button onClick={() => toggleFullscreen('sl-preview-modal')} className="p-1.5 rounded-lg hover:bg-white/20 text-sm" title="Full Screen">⛶</button>
                                 <button onClick={handleExportPPTX} className="px-3 py-1.5 rounded-lg text-xs bg-blue-600 text-white hover:bg-blue-500 font-medium">📊 .pptx</button>
                                 <button onClick={handleExportSlidesPDF} className="px-3 py-1.5 rounded-lg text-xs bg-amber-600 text-white hover:bg-amber-500 font-medium">📄 PDF</button>
+                                <button
+                                    onClick={async () => {
+                                        try {
+                                            const { data: { session } } = await supabase.auth.getSession();
+                                            const driveToken = session?.provider_token || sessionStorage.getItem('muse_drive_token');
+                                            if (!driveToken) { alert('Please connect Google Drive first.'); return; }
+                                            const slideText = slDeck.slides.map((s: any, i: number) =>
+                                                `Slide ${i + 1}: ${s.title}\n${(s.bullets || []).join('\n')}`
+                                            ).join('\n\n---\n\n');
+                                            await googleDriveService.uploadFile(driveToken, `${slDeck.title}.txt`, `${slDeck.title}\n\n${slideText}`, 'text/plain');
+                                            alert('✅ Slides uploaded to Google Drive!');
+                                        } catch (e: any) { alert('Upload failed: ' + e.message); }
+                                    }}
+                                    className="px-3 py-1.5 rounded-lg text-xs bg-green-600 text-white hover:bg-green-500 font-medium"
+                                >☁️ Drive</button>
                                 <button onClick={() => setShowSlPreview(false)} className="p-1.5 rounded-lg hover:bg-white/20 text-sm">✕</button>
                             </div>
                         </div>
