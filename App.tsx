@@ -201,6 +201,11 @@ const App: React.FC = () => {
                 // IMMEDIATELY check gmail BEFORE any async work
                 checkGmailConnection(session);
                 loadUserData(session);
+
+                // CLEANUP URL HASH (removes #access_token=... from Supabase redirect)
+                if (window.location.hash) {
+                    window.history.replaceState({}, '', window.location.pathname + window.location.search);
+                }
             } else {
                 if (mounted) {
                     setHasAccess(false);
@@ -669,7 +674,7 @@ const App: React.FC = () => {
                                     const { error } = await supabase.auth.signInWithOAuth({
                                         provider: 'google',
                                         options: {
-                                            scopes: 'https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/drive.file',
+                                            scopes: 'https://www.googleapis.com/auth/drive.file',
                                             redirectTo: window.location.origin
                                         }
                                     });

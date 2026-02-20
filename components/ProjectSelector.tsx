@@ -196,12 +196,10 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
       provider: 'google',
       options: {
         redirectTo: window.location.origin,
-        // Request Drive scopes (and Gmail just in case, or rely on included)
-        scopes: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/documents',
+        scopes: 'https://www.googleapis.com/auth/drive.file',
         queryParams: {
           access_type: 'offline',
           prompt: 'consent select_account',
-          include_granted_scopes: 'true'
         },
       }
     });
@@ -502,7 +500,6 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
                               queryParams: {
                                 access_type: 'offline',
                                 prompt: 'consent',
-                                include_granted_scopes: 'true',
                               },
                             },
                           });
