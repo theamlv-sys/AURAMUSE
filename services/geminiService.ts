@@ -405,14 +405,15 @@ export const generateStoryboardImage = async (
   const ai = getAI();
 
   try {
+    // Config differs per model — per official Google API docs
+    const config = modelId === 'gemini-3-pro-image-preview'
+      ? { imageConfig: { aspectRatio, imageSize: "2K" as const } }
+      : { imageConfig: { aspectRatio } };
+
     const response = await ai.models.generateContent({
       model: modelId,
-      contents: {
-        parts: [{ text: prompt }]
-      },
-      config: {
-        responseModalities: [Modality.IMAGE, Modality.TEXT],
-      }
+      contents: prompt,
+      config,
     });
 
     for (const part of response.candidates?.[0]?.content?.parts || []) {
