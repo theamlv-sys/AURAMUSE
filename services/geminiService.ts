@@ -407,8 +407,15 @@ export const generateStoryboardImage = async (
   try {
     // Config differs per model — per official Google API docs
     const config = modelId === 'gemini-3-pro-image-preview'
-      ? { imageConfig: { aspectRatio, imageSize: "2K" as const } }
-      : { imageConfig: { aspectRatio } };
+      ? {
+        // Gemini 3 Pro requires responseModalities + imageConfig with imageSize
+        responseModalities: ['Text', 'Image'],
+        imageConfig: { aspectRatio, imageSize: "2K" as const },
+      }
+      : {
+        // Gemini 2.5 Flash only needs imageConfig
+        imageConfig: { aspectRatio },
+      };
 
     const response = await ai.models.generateContent({
       model: modelId,
@@ -416,11 +423,25 @@ export const generateStoryboardImage = async (
       config,
     });
 
+    // Gemini 3 Pro is a thinking model — it generates interim "thought" images
+    // before the final output. We need to grab the LAST non-thought image part.
+    let lastImageData: string | null = null;
+    let lastMimeType: string = 'image/png';
+
     for (const part of response.candidates?.[0]?.content?.parts || []) {
+      // Skip thought parts (interim reasoning images)
+      if ((part as any).thought) continue;
+
       if (part.inlineData) {
-        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+        lastMimeType = part.inlineData.mimeType || 'image/png';
+        lastImageData = part.inlineData.data || null;
       }
     }
+
+    if (lastImageData) {
+      return `data:${lastMimeType};base64,${lastImageData}`;
+    }
+
     throw new Error("No image generated.");
   } catch (error) {
     console.error("Image Gen Error:", error);
