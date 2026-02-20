@@ -405,33 +405,40 @@ export const generateStoryboardImage = async (
   const ai = getAI();
 
   try {
-    // Config differs per model — per official Google API docs
-    const config = modelId === 'gemini-3-pro-image-preview'
-      ? {
-        // Gemini 3 Pro requires responseModalities + imageConfig with imageSize
-        responseModalities: ['Text', 'Image'],
-        imageConfig: { aspectRatio, imageSize: "2K" as const },
-      }
-      : {
-        // Gemini 2.5 Flash only needs imageConfig
-        imageConfig: { aspectRatio },
-      };
+    let response;
 
-    const response = await ai.models.generateContent({
-      model: modelId,
-      contents: prompt,
-      config,
-    });
+    if (modelId === 'gemini-3-pro-image-preview') {
+      // Gemini 3 Pro — exact format from Google official docs
+      response = await ai.models.generateContent({
+        model: 'gemini-3-pro-image-preview',
+        contents: prompt,
+        config: {
+          responseModalities: ['Text', 'Image'],
+          imageConfig: {
+            aspectRatio: aspectRatio,
+            imageSize: '2K',
+          },
+        },
+      });
+    } else {
+      // Gemini 2.5 Flash — exact format from Google official docs
+      response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: prompt,
+        config: {
+          imageConfig: {
+            aspectRatio: aspectRatio,
+          },
+        },
+      });
+    }
 
-    // Gemini 3 Pro is a thinking model — it generates interim "thought" images
-    // before the final output. We need to grab the LAST non-thought image part.
+    // Gemini 3 Pro is a thinking model — skip thought parts, grab last final image
     let lastImageData: string | null = null;
     let lastMimeType: string = 'image/png';
 
     for (const part of response.candidates?.[0]?.content?.parts || []) {
-      // Skip thought parts (interim reasoning images)
       if ((part as any).thought) continue;
-
       if (part.inlineData) {
         lastMimeType = part.inlineData.mimeType || 'image/png';
         lastImageData = part.inlineData.data || null;
@@ -442,9 +449,10 @@ export const generateStoryboardImage = async (
       return `data:${lastMimeType};base64,${lastImageData}`;
     }
 
-    throw new Error("No image generated.");
-  } catch (error) {
-    console.error("Image Gen Error:", error);
+    throw new Error("No image generated in response.");
+  } catch (error: any) {
+    console.error("Image Gen Error:", error?.message || error);
+    console.error("Model:", modelId, "| Full error:", JSON.stringify(error, null, 2));
     throw error;
   }
 };
