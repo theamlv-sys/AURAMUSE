@@ -396,62 +396,35 @@ export const generateVideoPromptFromText = async (text: string): Promise<string>
   }
 }
 
-export const generateStoryboardImage = async (prompt: string, userTier: SubscriptionTier = 'FREE', aspectRatio: "16:9" | "1:1" | "9:16" = "16:9"): Promise<string> => {
+export const generateStoryboardImage = async (
+  prompt: string,
+  userTier: SubscriptionTier = 'FREE',
+  aspectRatio: "16:9" | "1:1" | "9:16" = "16:9",
+  modelId: 'gemini-2.5-flash-image' | 'gemini-3-pro-image-preview' = 'gemini-2.5-flash-image'
+): Promise<string> => {
   const ai = getAI();
 
-  // Model fallback chain — try primary model, then fallback
-  const models = [
-    'gemini-2.0-flash-preview-image-generation',
-    'imagen-3.0-generate-002'
-  ];
-
-  let lastError: any;
-
-  for (const modelId of models) {
-    try {
-      if (modelId.startsWith('imagen')) {
-        // Imagen models use a different API method
-        const response = await ai.models.generateImages({
-          model: modelId,
-          prompt: prompt,
-          config: {
-            numberOfImages: 1,
-            aspectRatio: aspectRatio,
-          }
-        });
-        const imageData = response.generatedImages?.[0]?.image;
-        if (imageData?.imageBytes) {
-          return `data:image/png;base64,${imageData.imageBytes}`;
-        }
-        throw new Error("No image data from Imagen.");
-      } else {
-        // Gemini native image generation
-        const response = await ai.models.generateContent({
-          model: modelId,
-          contents: {
-            parts: [{ text: prompt }]
-          },
-          config: {
-            responseModalities: [Modality.IMAGE, Modality.TEXT],
-          }
-        });
-
-        for (const part of response.candidates?.[0]?.content?.parts || []) {
-          if (part.inlineData) {
-            return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-          }
-        }
-        throw new Error("No image in response.");
+  try {
+    const response = await ai.models.generateContent({
+      model: modelId,
+      contents: {
+        parts: [{ text: prompt }]
+      },
+      config: {
+        responseModalities: [Modality.IMAGE, Modality.TEXT],
       }
-    } catch (error) {
-      console.warn(`Image gen failed with model ${modelId}:`, error);
-      lastError = error;
-      // Continue to next model in the fallback chain
-    }
-  }
+    });
 
-  console.error("All image generation models failed:", lastError);
-  throw lastError || new Error("Image generation failed with all models.");
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData) {
+        return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+      }
+    }
+    throw new Error("No image generated.");
+  } catch (error) {
+    console.error("Image Gen Error:", error);
+    throw error;
+  }
 };
 
 export const generateVeoVideo = async (prompt: string, imageBase64?: string): Promise<string> => {

@@ -406,11 +406,30 @@ const App: React.FC = () => {
     const trackUsage = (type: 'video' | 'image' | 'voice' | 'audio', amount: number = 1) => {
         setUsage(prev => {
             const next = { ...prev };
-            // Update balances...
+            // Update balances
             if (type === 'video') { next.videoBalance -= amount; next.videosGenerated += amount; }
             if (type === 'image') { next.imageBalance -= amount; next.imagesGenerated += amount; }
             if (type === 'voice') { next.voiceBalance -= amount; next.voiceMinutesUsed += amount; }
             if (type === 'audio') { next.audioBalance -= amount; next.audioMinutesGenerated += (amount / 900); }
+
+            // Log to history
+            const descriptions: Record<string, string> = {
+                video: `Veo 3.1 Video Generated`,
+                image: amount > 1 ? `Storyboard (Gemini 3 Pro) — ${amount} credits` : `Storyboard Generated`,
+                voice: `Voice Mode — ${amount} min`,
+                audio: `Audio Synth`
+            };
+            next.history = [
+                {
+                    id: `tx_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                    timestamp: Date.now(),
+                    type: 'usage',
+                    item: type,
+                    amount: -amount,
+                    description: descriptions[type] || `${type} usage`
+                },
+                ...prev.history
+            ];
             return next;
         });
     };

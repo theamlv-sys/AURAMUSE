@@ -34,6 +34,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [input, setInput] = useState('');
   const [useSearch, setUseSearch] = useState(false);
   const [isVeoModalOpen, setIsVeoModalOpen] = useState(false);
+  const [imageModel, setImageModel] = useState<'gemini-2.5-flash-image' | 'gemini-3-pro-image-preview'>('gemini-2.5-flash-image');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll
@@ -92,18 +93,18 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       const lowerInput = userMsg.content.toLowerCase();
 
       if (lowerInput.includes('storyboard') || (lowerInput.includes('image') && lowerInput.includes('generate'))) {
-        // ... (keep image generation logic)
+        const pointCost = imageModel === 'gemini-3-pro-image-preview' ? 2 : 1;
         if (!checkLimit('image')) {
           setMessages(prev => [...prev, { role: 'model', content: "You have reached your image generation limit. Please upgrade your plan." }]);
           return;
         }
 
-        const responseText = "Generating storyboard asset...";
-        setMessages(prev => [...prev, { role: 'model', content: responseText }]);
+        const modelLabel = imageModel === 'gemini-3-pro-image-preview' ? 'Gemini 3 Pro (2 credits)' : 'Gemini 2.5 Flash (1 credit)';
+        setMessages(prev => [...prev, { role: 'model', content: `Generating storyboard with ${modelLabel}...` }]);
 
         try {
-          const b64 = await generateStoryboardImage(userMsg.content, userTier);
-          trackUsage('image');
+          const b64 = await generateStoryboardImage(userMsg.content, userTier, '16:9', imageModel);
+          trackUsage('image', pointCost);
           const newAsset: Asset = {
             id: Date.now().toString(),
             type: 'image',
@@ -115,7 +116,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           onAddAsset(newAsset);
           setMessages(prev => [...prev, { role: 'model', content: "Here is your storyboard image.", type: 'image', mediaUrl: b64 }]);
         } catch (e) {
-          setMessages(prev => [...prev, { role: 'model', content: "Failed to generate image." }]);
+          setMessages(prev => [...prev, { role: 'model', content: "Failed to generate image. Please try again." }]);
         }
 
       } else if (lowerInput.includes('analyze') && assets.length > 0) {
@@ -167,6 +168,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   };
 
   const handleQuickStoryboard = async () => {
+    const pointCost = imageModel === 'gemini-3-pro-image-preview' ? 2 : 1;
     if (!checkLimit('image')) {
       setMessages(prev => [...prev, { role: 'model', content: "You have reached your image generation limit. Please upgrade your plan." }]);
       return;
@@ -400,13 +402,23 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         {/* Input & Quick Actions */}
         <div className={`p-4 ${bgHeader} border-t ${border} transition-colors duration-500`}>
           <div className={`grid grid-cols-3 gap-2 mb-3 ${userTier === 'FREE' ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
-            <button
-              onClick={handleQuickStoryboard}
-              disabled={isLoading || isLiveActive || userTier === 'FREE'}
-              className={`${inputBg} hover:${isDark ? 'bg-gray-700' : 'bg-gray-50'} ${textSec} hover:${textMain} text-[10px] md:text-xs py-2 px-2 rounded-xl border ${border} transition-all flex items-center justify-center gap-1 shadow-sm`}
-            >
-              <span>🖼️</span> Storyboard
-            </button>
+            <div className="flex flex-col gap-1">
+              <button
+                onClick={handleQuickStoryboard}
+                disabled={isLoading || isLiveActive || userTier === 'FREE'}
+                className={`${inputBg} hover:${isDark ? 'bg-gray-700' : 'bg-gray-50'} ${textSec} hover:${textMain} text-[10px] md:text-xs py-2 px-2 rounded-xl border ${border} transition-all flex items-center justify-center gap-1 shadow-sm`}
+              >
+                <span>🖼️</span> Storyboard
+              </button>
+              <select
+                value={imageModel}
+                onChange={(e) => setImageModel(e.target.value as any)}
+                className={`${inputBg} ${textSec} text-[9px] py-0.5 px-1 rounded-lg border ${border} transition-all cursor-pointer`}
+              >
+                <option value="gemini-2.5-flash-image">2.5 Flash (1pt)</option>
+                <option value="gemini-3-pro-image-preview">3 Pro (2pt)</option>
+              </select>
+            </div>
             <button
               onClick={toggleLive}
               disabled={userTier === 'FREE'}
