@@ -762,6 +762,10 @@ const App: React.FC = () => {
                         }}
                         isGmailConnected={isGmailConnected}
                         userTier={userTier}
+                        onOpenAssistant={() => {
+                            setActiveTab('chat');
+                            setShowRightPanel(true);
+                        }}
                     />
                 </div>
 

@@ -26,9 +26,10 @@ interface EditorProps {
     onUploadToDrive?: (title: string, content: string) => Promise<void>;
     isGmailConnected?: boolean;
     userTier?: SubscriptionTier;
+    onOpenAssistant?: () => void;
 }
 
-const Editor: React.FC<EditorProps> = ({ content, onChange, title, onTitleChange, projectType, versionHistory, onRestoreVersion, onSnapshot, onDeleteSnapshot, onSave, theme, onExportGoogleDoc, onUploadToDrive, isGmailConnected, userTier }) => {
+const Editor: React.FC<EditorProps> = ({ content, onChange, title, onTitleChange, projectType, versionHistory, onRestoreVersion, onSnapshot, onDeleteSnapshot, onSave, theme, onExportGoogleDoc, onUploadToDrive, isGmailConnected, userTier, onOpenAssistant }) => {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [showExportMenu, setShowExportMenu] = useState(false);
     const [isExportingPdf, setIsExportingPdf] = useState(false);
@@ -223,7 +224,15 @@ const Editor: React.FC<EditorProps> = ({ content, onChange, title, onTitleChange
                     )}
                 </div>
 
-                <div className="relative">
+                <div className="relative flex items-center gap-2">
+                    {onOpenAssistant && (
+                        <button
+                            onClick={onOpenAssistant}
+                            className={`md:hidden flex items-center gap-1 px-3 py-1.5 bg-muse-100 text-muse-700 dark:bg-muse-900/40 dark:text-muse-300 rounded-lg text-sm font-bold transition-all shadow-sm border border-muse-200 dark:border-muse-800`}
+                        >
+                            <span>✨</span> Assistant
+                        </button>
+                    )}
                     <button
                         onClick={() => setShowExportMenu(!showExportMenu)}
                         className={`flex items-center gap-2 px-3 py-1.5 ${isDark ? 'bg-gray-800 hover:bg-gray-700 text-gray-200' : 'bg-white hover:bg-gray-50 text-gray-700 border border-gray-200'} rounded-lg text-sm font-medium transition-colors`}
