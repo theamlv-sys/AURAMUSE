@@ -586,19 +586,23 @@ const App: React.FC = () => {
     }
 
     return (
-        <div className={`flex h-screen w-screen overflow-hidden font-sans transition-colors duration-500 ${theme === 'dark' ? 'bg-gray-950 text-gray-200' : 'bg-gray-50 text-gray-900'}`}>
+        <div className={`flex flex-col md:flex-row h-screen w-screen overflow-hidden font-sans transition-colors duration-500 ${theme === 'dark' ? 'bg-gray-950 text-gray-200' : 'bg-gray-50 text-gray-900'}`}>
             <SubscriptionModal isOpen={showSubModal} onClose={() => setShowSubModal(false)} currentTier={userTier} onUpgrade={handleTierSelection} />
 
-            {/* Simple Sidebar Implementation */}
-            <div className="w-16 bg-gray-950 border-r border-gray-800 flex flex-col items-center py-6 gap-6 z-20">
-                <div onClick={() => handleNavigate('HOME')} className="w-10 h-10 bg-muse-600 rounded-lg flex items-center justify-center cursor-pointer hover:bg-muse-500 text-white font-serif font-bold text-xl">M</div>
-                <div className="flex flex-col gap-4 mt-8">
+            {/* Simple Sidebar Implementation -> Bottom Nav on Mobile */}
+            <div className="order-last md:order-first w-full h-16 md:w-16 md:h-full bg-gray-950 border-t md:border-t-0 md:border-r border-gray-800 flex flex-row md:flex-col items-center py-2 px-4 md:py-6 md:px-0 gap-2 md:gap-6 z-50 shrink-0 overflow-x-auto md:overflow-visible custom-scrollbar">
+                <div onClick={() => handleNavigate('HOME')} className="w-10 h-10 shrink-0 bg-muse-600 rounded-lg flex items-center justify-center cursor-pointer hover:bg-muse-500 text-white font-serif font-bold text-xl md:mb-2">M</div>
+
+                <div className="flex flex-row md:flex-col gap-2 md:gap-4 items-center h-full md:h-auto flex-1 md:flex-none">
+                    {/* Mobile Only: Explicit Editor/Write Toggle */}
+                    <div className="md:hidden">
+                        <NavButton active={!showRightPanel} onClick={() => setShowRightPanel(false)} icon="edit" tooltip="Editor" />
+                    </div>
+
                     <NavButton active={activeTab === 'chat' && showRightPanel} onClick={() => { setShowRightPanel(true); setActiveTab('chat'); }} icon="sparkles" tooltip="AI Chat" />
                     <NavButton active={activeTab === 'bible' && showRightPanel} onClick={() => { if (checkLimit('bible')) { setShowRightPanel(true); setActiveTab('bible'); } }} icon="book" tooltip="Story Bible" />
                     <NavButton active={activeTab === 'assets' && showRightPanel} onClick={() => { setShowRightPanel(true); setActiveTab('assets'); }} icon="library" tooltip="Assets" />
                     <NavButton active={activeTab === 'audio' && showRightPanel} onClick={() => { if (checkLimit('audio')) { setShowRightPanel(true); setActiveTab('audio'); } }} icon="mic" tooltip="Audio Studio" />
-
-
 
                     {projectType === ProjectType.YOUTUBE && isPremiumTier && (
                         <>
@@ -611,9 +615,8 @@ const App: React.FC = () => {
                     )}
 
                     {/* Domo Suite Sub-navigation (Visible only when in suite) */}
-
                     {isDomoSuiteType && isPremiumTier && (
-                        <div className="flex flex-col gap-3 mt-2 pt-2 border-t border-gray-800/50">
+                        <div className="flex flex-row md:flex-col gap-2 md:gap-3 md:mt-2 md:pt-2 md:border-t md:border-gray-800/50 pl-2 md:pl-0 border-l md:border-l-0 border-gray-800/50">
                             <NavButton active={projectType === ProjectType.PODCAST} onClick={() => handleProjectSelect(ProjectType.PODCAST)} icon="podcast" tooltip="Podcast Studio" />
                             <NavButton active={projectType === ProjectType.NEWSLETTER} onClick={() => handleProjectSelect(ProjectType.NEWSLETTER)} icon="newsletter" tooltip="Newsletter Gen" />
                             <NavButton active={projectType === ProjectType.SLIDES} onClick={() => handleProjectSelect(ProjectType.SLIDES)} icon="slides" tooltip="Slide Deck AI" />
@@ -622,14 +625,16 @@ const App: React.FC = () => {
                         </div>
                     )}
 
-                    <button onClick={() => setShowRightPanel(!showRightPanel)} className="p-2 text-gray-500 mt-auto"><svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg></button>
+                    <button onClick={() => setShowRightPanel(!showRightPanel)} className="p-2 text-gray-500 md:mt-auto hidden md:block">
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" /></svg>
+                    </button>
                 </div>
             </div>
 
-            {/* DOMO SUITE PANEL (Permanent Left Column for Domo Types) */}
+            {/* DOMO SUITE PANEL (Permanent Left Column for Domo Types on Desktop) */}
             {
                 isDomoSuiteType && (
-                    <div className="w-[360px] border-r border-gray-200 dark:border-gray-800 flex flex-col z-10 shrink-0 bg-white dark:bg-gray-900 transition-colors duration-500">
+                    <div className="hidden md:flex w-[360px] border-r border-gray-200 dark:border-gray-800 flex-col z-10 shrink-0 bg-white dark:bg-gray-900 transition-colors duration-500">
                         <CreativeSuite
                             userTier={userTier}
                             theme={theme}
@@ -760,7 +765,7 @@ const App: React.FC = () => {
                     />
                 </div>
 
-                <div className={`fixed inset-0 z-40 md:static md:z-0 transition-all duration-300 border-l ${theme === 'dark' ? 'border-gray-800 bg-gray-900' : 'bg-white'} flex flex-col ${showRightPanel ? 'translate-x-0 w-full md:w-[450px]' : 'translate-x-full md:w-0'}`}>
+                <div className={`fixed top-0 left-0 right-0 bottom-16 md:inset-auto z-40 md:static md:z-0 transition-all duration-300 border-l ${theme === 'dark' ? 'border-gray-800 bg-gray-900' : 'bg-white'} flex flex-col ${showRightPanel ? 'translate-x-0 w-full md:w-[450px]' : 'translate-x-full md:w-0'}`}>
                     {activeTab === 'chat' && (
                         <ChatInterface
                             projectType={projectType}
@@ -814,6 +819,29 @@ const App: React.FC = () => {
                             projectType={projectType!}
                             onSendToEditor={(text) => { handleSnapshot(); setContent(text); }}
                             editorContent={content}
+                            // Passed State for Mobile Fallback
+                            podTopic={podTopic} setPodTopic={setPodTopic}
+                            podStyle={podStyle} setPodStyle={setPodStyle}
+                            podHost1={podHost1} setPodHost1={setPodHost1}
+                            podHost2={podHost2} setPodHost2={setPodHost2}
+                            podDuration={podDuration} setPodDuration={setPodDuration}
+                            podFormat={podFormat} setPodFormat={setPodFormat}
+
+                            nlTopic={nlTopic} setNlTopic={setNlTopic}
+                            nlType={nlType} setNlType={setNlType}
+                            nlStyle={nlStyle} setNlStyle={setNlStyle}
+                            nlNotes={nlNotes} setNlNotes={setNlNotes}
+                            nlContent={nlContent} setNlContent={setNlContent}
+                            showNlPreview={showNlPreview} setShowNlPreview={setShowNlPreview}
+
+                            slTopic={slTopic} setSlTopic={setSlTopic}
+                            slCount={slCount} setSlCount={setSlCount}
+                            slStyle={slStyle} setSlStyle={setSlStyle}
+                            slNotes={slNotes} setSlNotes={setSlNotes}
+                            slDeck={slDeck} setSlDeck={setSlDeck}
+                            slImages={slImages} setSlImages={setSlImages}
+                            showSlPreview={showSlPreview} setShowSlPreview={setShowSlPreview}
+                            activeSlideIndex={activeSlideIndex} setActiveSlideIndex={setActiveSlideIndex}
                         />
                     )}
                     {(activeTab === 'youtube_seo' || activeTab === 'youtube_thumb') && (

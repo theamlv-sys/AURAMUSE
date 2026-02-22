@@ -451,7 +451,7 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
         </header>
 
         {/* Content Scroll Area */}
-        <div className="flex-1 overflow-y-auto p-8 z-10 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 z-10 custom-scrollbar">
 
           {/* VIEW: HOME */}
           {view === 'HOME' && (

@@ -180,7 +180,7 @@ const Editor: React.FC<EditorProps> = ({ content, onChange, title, onTitleChange
     return (
         <div id="editor-container" className={`h-full flex flex-col ${bgMain} relative transition-colors duration-500`}>
             {/* Toolbar */}
-            <div className={`no-print px-8 py-4 border-b ${border} flex justify-between items-center ${bgMain} z-10 transition-colors duration-500`}>
+            <div className={`no-print px-4 md:px-8 py-2 md:py-4 border-b ${border} flex flex-wrap justify-between items-center gap-2 md:gap-0 ${bgMain} z-10 transition-colors duration-500`}>
                 <div className="flex items-center gap-3">
                     <button
                         onClick={onSave}
@@ -260,15 +260,15 @@ const Editor: React.FC<EditorProps> = ({ content, onChange, title, onTitleChange
 
             <div className={`flex-1 flex overflow-hidden relative ${bgMain} transition-colors duration-500`}>
                 {/* Main Editor Area */}
-                <div className="flex-1 flex flex-col overflow-y-auto px-8 pb-8 items-center custom-scrollbar">
-                    <div className="w-full max-w-4xl pt-12 pb-6">
+                <div className="flex-1 flex flex-col overflow-y-auto px-4 md:px-8 pb-8 items-center custom-scrollbar">
+                    <div className="w-full max-w-4xl pt-6 md:pt-12 pb-4 md:pb-6">
                         <input
                             id="editor-title"
                             type="text"
                             value={title}
                             onChange={(e) => onTitleChange(e.target.value)}
                             placeholder="Untitled Project"
-                            className={`w-full bg-transparent text-4xl md:text-5xl font-bold ${textMain} placeholder-gray-400 focus:outline-none transition-colors duration-500 ${isScreenplay ? 'font-mono text-center uppercase tracking-widest' : 'font-serif'}`}
+                            className={`w-full bg-transparent text-2xl sm:text-4xl md:text-5xl font-bold ${textMain} placeholder-gray-400 focus:outline-none transition-colors duration-500 ${isScreenplay ? 'font-mono text-center uppercase tracking-widest' : 'font-serif'}`}
                         />
                     </div>
                     <textarea

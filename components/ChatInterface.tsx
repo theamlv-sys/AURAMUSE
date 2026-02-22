@@ -245,7 +245,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     <>
       <div className={`flex flex-col h-full ${bgMain} border-l ${border} transition-colors duration-500`}>
         {/* Header */}
-        <div className={`p-4 border-b ${border} flex justify-between items-center ${bgHeader} transition-colors duration-500`}>
+        <div className={`p-3 md:p-4 border-b ${border} flex justify-between items-center ${bgHeader} transition-colors duration-500`}>
           <h2 className={`font-semibold flex items-center gap-2 ${textMain}`}>
             <span className="text-muse-500 text-xl">✨</span> Muse Assistant
           </h2>
@@ -271,10 +271,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         )}
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-3 md:p-4 space-y-4 md:space-y-6 custom-scrollbar">
           {messages.map((msg, idx) => (
             <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[85%] rounded-2xl p-5 shadow-sm ${msg.role === 'user'
+              <div className={`max-w-[90%] md:max-w-[85%] rounded-2xl p-4 md:p-5 shadow-sm ${msg.role === 'user'
                 ? 'bg-gradient-to-br from-muse-600 to-purple-600 text-white rounded-br-none'
                 : `${isDark ? 'bg-gray-800 text-gray-200 border-gray-700' : 'bg-white text-gray-800 border-gray-100'} border rounded-bl-none`
                 }`}>
@@ -401,7 +401,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         )}
 
         {/* Input & Quick Actions */}
-        <div className={`p-4 ${bgHeader} border-t ${border} transition-colors duration-500`}>
+        <div className={`p-3 md:p-4 pb-6 md:pb-4 ${bgHeader} border-t ${border} transition-colors duration-500`}>
           <div className={`grid grid-cols-3 gap-2 mb-3 ${userTier === 'FREE' ? 'opacity-50 pointer-events-none grayscale' : ''}`}>
             <div className="flex flex-col gap-1">
               <button
@@ -466,7 +466,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               }}
               placeholder={userTier === 'FREE' ? "AI features are locked for Visitors..." : isLiveActive ? "Listening..." : "Ask for edits ('Rewrite the intro'), ideas, or specific scenes..."}
               disabled={isLiveActive || userTier === 'FREE'}
-              className={`w-full ${inputBg} ${textMain} rounded-xl pl-4 pr-12 py-3 focus:outline-none focus:ring-2 focus:ring-muse-500 resize-none h-24 text-sm ${isLiveActive || userTier === 'FREE' ? 'opacity-50' : ''} border ${border} transition-colors placeholder-gray-400 shadow-inner`}
+              className={`w-full ${inputBg} ${textMain} rounded-xl pl-4 pr-12 py-3 focus:outline-none focus:ring-2 focus:ring-muse-500 resize-none h-20 md:h-24 text-sm ${isLiveActive || userTier === 'FREE' ? 'opacity-50' : ''} border ${border} transition-colors placeholder-gray-400 shadow-inner`}
             />
             <button
               onClick={handleSend}
