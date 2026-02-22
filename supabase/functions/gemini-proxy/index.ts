@@ -31,7 +31,9 @@ serve(async (req) => {
 
         // Construct the payload for the Google API correctly
         const googlePayload: any = {
-            contents: Array.isArray(contents) ? contents : [{ parts: [{ text: contents }] }],
+            contents: Array.isArray(contents)
+                ? contents
+                : (typeof contents === 'string' ? [{ parts: [{ text: contents }] }] : [contents]),
             generationConfig: config || {},
         }
 
