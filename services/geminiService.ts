@@ -696,9 +696,9 @@ export const generateSpeech = async (
   directorConfig?: any
 ): Promise<string> => {
   const modelId = 'gemini-2.5-flash-preview-tts';
+  let speechConfig: any = {}; // Moved outside the try block so the catch block can access it
 
   try {
-    let speechConfig: any = {};
     let finalPrompt = text;
 
     // ------------------------------------------
@@ -783,8 +783,40 @@ export const generateSpeech = async (
     if (!base64Audio) throw new Error("No audio data returned.");
 
     return base64Audio;
-  } catch (e) {
+  } catch (e: any) {
     console.error("TTS Generation Error", e);
+
+    // Auto-Format Fallback: If it failed and we are in MULTI-SPEAKER mode, 
+    // it's highly likely because the user didn't format the text with "Character: Line".
+    // We will automatically format it and try ONE MORE TIME.
+    if (speakerConfig.multiSpeaker && speakerConfig.multiSpeaker.length > 0) {
+      console.log("Attempting automatic script formatting fallback...");
+      try {
+        const charNames = speakerConfig.multiSpeaker.map(s => s.character);
+        const formattedText = await formatScriptForTTS(text, charNames);
+
+        // Re-run the exact same prompt generation but with the formatted text
+        let fallbackPrompt = formattedText;
+        if (speakerConfig.multiSpeaker && speakerConfig.multiSpeaker.length > 0) {
+          const names = speakerConfig.multiSpeaker.map(s => s.character).join(' and ');
+          fallbackPrompt = `TTS the following conversation between ${names}:\n${formattedText}`;
+        }
+
+        const fallbackResponse = await callGeminiProxy(modelId, { parts: [{ text: fallbackPrompt }] }, {
+          responseModalities: ["AUDIO"],
+          speechConfig: speechConfig
+        });
+
+        const fallbackBase64 = fallbackResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+        if (fallbackBase64) {
+          console.log("Fallback formatting successful.");
+          return fallbackBase64;
+        }
+      } catch (fallbackErr) {
+        console.error("Fallback formatting also failed.", fallbackErr);
+      }
+    }
+
     throw e;
   }
 }
