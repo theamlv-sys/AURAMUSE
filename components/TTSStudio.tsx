@@ -223,9 +223,9 @@ const TTSStudio: React.FC<TTSStudioProps & { theme: 'dark' | 'light' }> = ({ edi
             };
             onAddAsset(newAsset);
 
-        } catch (e) {
+        } catch (e: any) {
             console.error(e);
-            alert("Failed to generate audio. Ensure your script uses the 'Character: Line' format.");
+            alert(`API Error: ${e?.message || e}\n\nThe script was auto-formatted but generation still failed.`);
         } finally {
             setIsGenerating(false);
         }
