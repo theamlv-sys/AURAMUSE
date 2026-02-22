@@ -766,6 +766,19 @@ const App: React.FC = () => {
                 </div>
 
                 <div className={`fixed top-0 left-0 right-0 bottom-16 md:inset-auto z-40 md:static md:z-0 transition-all duration-300 border-l ${theme === 'dark' ? 'border-gray-800 bg-gray-900' : 'bg-white'} flex flex-col ${showRightPanel ? 'translate-x-0 w-full md:w-[450px]' : 'translate-x-full md:w-0'}`}>
+                    {/* Mobile Back to Editor Button */}
+                    <div className={`md:hidden flex items-center p-3 border-b shrink-0 ${theme === 'dark' ? 'border-gray-800 bg-gray-900' : 'border-gray-200 bg-white'}`}>
+                        <button
+                            onClick={() => setShowRightPanel(false)}
+                            className={`flex items-center gap-2 text-sm font-bold px-3 py-1.5 rounded-lg transition-colors ${theme === 'dark' ? 'text-gray-300 hover:bg-gray-800 hover:text-white' : 'text-gray-600 hover:bg-gray-100 hover:text-black'}`}
+                        >
+                            <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                            </svg>
+                            Back to Editor
+                        </button>
+                    </div>
+
                     {activeTab === 'chat' && (
                         <ChatInterface
                             projectType={projectType}

@@ -270,8 +270,8 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
       />
 
       {/* --- SIDEBAR --- */}
-      <div className={`fixed inset-y-0 left-0 z-50 md:static flex-shrink-0 ${sidebarColor} border-r ${borderColor} transition-all duration-500 ease-spring ${isSidebarOpen ? 'w-64 shadow-2xl md:shadow-none' : 'w-0 md:w-20 -translate-x-full md:translate-x-0'}`}>
-        <div className="flex flex-col h-full">
+      <div className={`fixed inset-y-0 left-0 z-50 md:static flex-shrink-0 ${sidebarColor} border-r ${borderColor} transition-all duration-500 ease-spring ${isSidebarOpen ? 'w-64 shadow-2xl md:shadow-none overflow-y-auto overflow-x-hidden md:overflow-visible' : 'w-0 md:w-20 -translate-x-full md:translate-x-0 overflow-hidden md:overflow-visible'}`}>
+        <div className="flex flex-col h-full w-64 md:w-full">
           {/* Logo Area */}
           {/* User Profile Header (Top) */}
           <div className={`h-20 flex items-center justify-between px-6 border-b ${borderColor}`}>
