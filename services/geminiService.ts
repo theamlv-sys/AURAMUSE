@@ -408,7 +408,21 @@ async function callGeminiProxy(model: string, contents: any, config: any = {}) {
 
   if (error) {
     console.error(`Supabase Function Error (${model}):`, error);
-    throw new Error(error.message || `Failed to call Gemini Proxy for ${model}`);
+
+    // Supabase wrap non-2xx responses in a generic Error string, putting our JSON in error.context
+    let exactMessage = error.message;
+    if (error.context) {
+      if (typeof error.context === 'string') exactMessage += ' ' + error.context;
+      else if (error.context.error) exactMessage = (error.context.error.message || JSON.stringify(error.context.error));
+      else exactMessage = JSON.stringify(error.context);
+    } else {
+      // Also sometimes it's just attached to the object directly
+      if ((error as any).error) {
+        exactMessage = ((error as any).error.message || JSON.stringify((error as any).error));
+      }
+    }
+
+    throw new Error(exactMessage || `Failed to call Gemini Proxy for ${model}`);
   }
 
   if (data?.error) {
@@ -669,13 +683,15 @@ export const formatScriptForTTS = async (text: string, characters: string[]): Pr
   const modelId = 'gemini-3-flash-preview';
   const prompt = `Rewrite the following text into a standard script format optimized for Multi-Speaker Text-to-Speech.
     
-    CHARACTERS AVAILABLE: ${characters.join(', ')}
+    CRITICAL CONSTRAINT: You MUST ONLY use the exact character names listed below as speaker tags. 
+    CHARACTERS AVAILABLE: [${characters.map(c => `"${c}"`).join(', ')}]
     
     RULES:
-    1. Every spoken line MUST start with "CharacterName: ".
-    2. If there is narration (non-dialogue), look for a character named "Narrator". If it exists, prefix with "Narrator: ". If not, assign it to the most appropriate character or remove if it's purely visual/unspoken.
-    3. Keep the dialogue content exactly as is, just fix the formatting.
-    4. Ensure the output is JUST the script, nothing else.
+    1. Every spoken line or paragraph MUST start with exactly one of the available names followed by a colon (e.g. "${characters[0] || 'CharacterName'}: ").
+    2. DO NOT invent new characters. DO NOT use "Narrator" unless "Narrator" is explicitly listed in the available characters.
+    3. If there is narration, assign it to the most logical character from the available list.
+    4. Remove all visual stage directions (e.g. [sighs], (smiling)). The TTS engine reads text literally.
+    5. Ensure the output is JUST the formatted script, nothing else.
 
     INPUT TEXT:
     """${text}"""
