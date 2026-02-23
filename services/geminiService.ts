@@ -401,37 +401,44 @@ export const generateVideoPromptFromText = async (text: string): Promise<string>
 /**
  * Helper to call the secure Gemini Proxy Supabase Function
  */
-async function callGeminiProxy(model: string, contents: any, config: any = {}) {
-  const { data, error } = await supabase.functions.invoke('gemini-proxy', {
-    body: { model, contents, config }
-  });
+async function callGeminiProxy(model: string, contents: any, config: any = {}): Promise<any> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
+  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/gemini-proxy`;
 
-  if (error) {
-    console.error(`Supabase Function Error (${model}):`, error);
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ model, contents, config })
+    });
 
-    // Supabase wrap non-2xx responses in a generic Error string, putting our JSON in error.context
-    let exactMessage = error.message;
-    if (error.context) {
-      if (typeof error.context === 'string') exactMessage += ' ' + error.context;
-      else if (error.context.error) exactMessage = (error.context.error.message || JSON.stringify(error.context.error));
-      else exactMessage = JSON.stringify(error.context);
-    } else {
-      // Also sometimes it's just attached to the object directly
-      if ((error as any).error) {
-        exactMessage = ((error as any).error.message || JSON.stringify((error as any).error));
-      }
+    const responseText = await response.text();
+    let responseData;
+    try {
+      responseData = JSON.parse(responseText);
+    } catch (parseErr) {
+      responseData = responseText;
     }
 
-    throw new Error(exactMessage || `Failed to call Gemini Proxy for ${model}`);
-  }
+    if (!response.ok) {
+      console.error(`Fetch Error (${model}):`, response.status, responseText);
+      const errorMsg = responseData?.error?.message || responseData?.error || responseText;
+      throw new Error(typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg));
+    }
 
-  if (data?.error) {
-    console.error(`Gemini API Error (${model}):`, data.error);
-    const msg = data.error?.message || JSON.stringify(data.error);
-    throw new Error(msg);
-  }
+    if (responseData?.error) {
+      throw new Error(responseData.error.message || JSON.stringify(responseData.error));
+    }
 
-  return data;
+    return responseData;
+  } catch (err: any) {
+    console.error(`Edge Function Fetch Failed (${model}):`, err);
+    throw new Error(err.message || `Failed to call Gemini Proxy for ${model}`);
+  }
 }
 
 export const generateStoryboardImage = async (
@@ -476,7 +483,7 @@ export const generateStoryboardImage = async (
       }
 
       if (lastImageData) {
-        return `data:${lastMimeType};base64,${lastImageData}`;
+        return `data:${lastMimeType}; base64, ${lastImageData} `;
       }
 
       throw new Error("No image generated in response.");
