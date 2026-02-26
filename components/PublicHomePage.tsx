@@ -107,8 +107,19 @@ const PublicHomePage: React.FC<PublicHomePageProps> = ({ onSelectTier, onNavigat
 
             {/* ━━━━━━━━━━━━━━━ HERO + SPLINE HEADER ━━━━━━━━━━━━━━━ */}
             <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-16">
-                {/* Layer 1 (base): Spline 3D Particles */}
-                <div className="absolute inset-0 z-0">
+                {/* Cinematic video background for hero */}
+                <div className="absolute inset-0 z-0 overflow-hidden">
+                    <video
+                        autoPlay muted playsInline loop
+                        className="w-full h-full object-cover"
+                        style={{ filter: 'brightness(0.3) saturate(1.2)' }}
+                        src="/veo31-e2145206-a707-4d81-b3b7-80cbb48a1045.mp4#t=1"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-[#050505]" />
+                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,#050505_80%)] opacity-60" />
+                </div>
+                {/* Spline 3D Particles — on top of video, screen blend makes dark bg transparent */}
+                <div className="absolute inset-0 z-[1]" style={{ mixBlendMode: 'screen' }}>
                     <iframe
                         src="https://my.spline.design/particles-U8Po1xhiaMhRXy6Umx9YXcsC/"
                         style={{ width: '100%', height: '100%', border: 'none' }}
@@ -117,22 +128,8 @@ const PublicHomePage: React.FC<PublicHomePageProps> = ({ onSelectTier, onNavigat
                         allow="autoplay"
                     />
                 </div>
-                {/* Layer 2: Cinematic video with opacity so particles peek through */}
-                <div className="absolute inset-0 z-[1] overflow-hidden" style={{ opacity: 0.5 }}>
-                    <video
-                        autoPlay muted playsInline loop
-                        className="w-full h-full object-cover"
-                        style={{ filter: 'brightness(0.4) saturate(1.2)' }}
-                        src="/veo31-e2145206-a707-4d81-b3b7-80cbb48a1045.mp4#t=1"
-                    />
-                </div>
-                {/* Layer 3: Darken edges */}
-                <div className="absolute inset-0 z-[2] pointer-events-none">
-                    <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-[#050505]" />
-                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,#050505_70%)] opacity-50" />
-                </div>
-                {/* Cover the Spline watermark on the particles */}
-                <div className="absolute bottom-2 right-0 z-[3] bg-[#050505] px-6 py-3 rounded-tl-2xl flex items-center gap-2" style={{ minWidth: '220px', minHeight: '52px' }}>
+                {/* Cover the Spline watermark */}
+                <div className="absolute bottom-2 right-0 z-[2] bg-[#050505] px-6 py-3 rounded-tl-2xl flex items-center gap-2" style={{ minWidth: '220px', minHeight: '52px' }}>
                     <span className="text-[11px] text-gray-500 uppercase tracking-[0.3em]">Powered by</span>
                     <span className="text-sm font-serif font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-yellow-500">AuraDomo</span>
                 </div>
