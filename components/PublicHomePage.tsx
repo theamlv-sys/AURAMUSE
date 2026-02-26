@@ -120,7 +120,7 @@ const PublicHomePage: React.FC<PublicHomePageProps> = ({ onSelectTier, onNavigat
                     <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,#050505_80%)] opacity-60" />
                 </div>
                 {/* Spline 3D Particles — on top of video, screen blend makes dark bg transparent */}
-                <div className="particles-layer absolute inset-0 z-[1]" style={{ mixBlendMode: 'screen' }}>
+                <div className="particles-layer absolute inset-0 z-[1] pointer-events-none" style={{ mixBlendMode: 'screen' }}>
                     <iframe
                         src="https://my.spline.design/particles-U8Po1xhiaMhRXy6Umx9YXcsC/"
                         style={{ width: '100%', height: '100%', border: 'none' }}
