@@ -57,6 +57,16 @@ const SHOWCASE = [
 // ═══════════════════════════════════════════════════════════
 const PublicHomePage: React.FC<PublicHomePageProps> = ({ onSelectTier, onNavigateLegal }) => {
     const [isLoggingIn, setIsLoggingIn] = useState(false);
+    const [particlesActive, setParticlesActive] = useState(false);
+    const [letterActive, setLetterActive] = useState(false);
+    const [isMobile, setIsMobile] = useState(false);
+
+    useEffect(() => {
+        const check = () => setIsMobile(window.innerWidth <= 768);
+        check();
+        window.addEventListener('resize', check);
+        return () => window.removeEventListener('resize', check);
+    }, []);
 
     const handleGoogleLogin = async () => {
         setIsLoggingIn(true);
@@ -120,7 +130,13 @@ const PublicHomePage: React.FC<PublicHomePageProps> = ({ onSelectTier, onNavigat
                     <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,#050505_80%)] opacity-60" />
                 </div>
                 {/* Spline 3D Particles — on top of video, screen blend makes dark bg transparent */}
-                <div className="particles-layer absolute inset-0 z-[1] pointer-events-none" style={{ mixBlendMode: 'screen' }}>
+                <div
+                    className="particles-layer absolute inset-0 z-[1]"
+                    style={{
+                        mixBlendMode: 'screen',
+                        pointerEvents: isMobile ? 'auto' : (particlesActive ? 'auto' : 'none'),
+                    }}
+                >
                     <iframe
                         src="https://my.spline.design/particles-U8Po1xhiaMhRXy6Umx9YXcsC/"
                         style={{ width: '100%', height: '100%', border: 'none' }}
@@ -129,6 +145,18 @@ const PublicHomePage: React.FC<PublicHomePageProps> = ({ onSelectTier, onNavigat
                         allow="autoplay"
                     />
                 </div>
+                {/* Desktop-only: Toggle interactive mode */}
+                {!isMobile && (
+                    <button
+                        onClick={() => setParticlesActive(!particlesActive)}
+                        className={`absolute z-[3] px-4 py-2 rounded-full text-[10px] uppercase tracking-widest font-bold transition-all duration-300 backdrop-blur-sm ${particlesActive
+                                ? 'bottom-16 right-4 bg-amber-500/90 text-black hover:bg-amber-400'
+                                : 'bottom-16 right-4 bg-white/10 text-white/60 hover:bg-white/20 hover:text-white border border-white/10'
+                            }`}
+                    >
+                        {particlesActive ? '✖ Exit Interactive' : '✋ Click to Interact'}
+                    </button>
+                )}
                 {/* Cover the Spline watermark */}
                 <div className="absolute bottom-2 right-0 z-[2] bg-[#050505] px-6 py-3 rounded-tl-2xl flex items-center gap-2" style={{ minWidth: '220px', minHeight: '52px' }}>
                     <span className="text-[11px] text-gray-500 uppercase tracking-[0.3em]">Powered by</span>
@@ -293,12 +321,28 @@ const PublicHomePage: React.FC<PublicHomePageProps> = ({ onSelectTier, onNavigat
                         </h2>
                     </div>
                     <div className="relative w-full rounded-3xl overflow-hidden border border-white/5 shadow-2xl shadow-amber-500/5" style={{ height: '500px' }}>
-                        <iframe
-                            src="https://my.spline.design/interactivesparkletterwithparticleeffect-DvbYbyDICuH9HgKE0XImdXGb/"
-                            style={{ width: '100%', height: '100%', border: 'none' }}
-                            title="Interactive 3D Spark Letter"
-                            loading="lazy"
-                        />
+                        <div
+                            style={{ width: '100%', height: '100%', pointerEvents: isMobile ? 'auto' : (letterActive ? 'auto' : 'none') }}
+                        >
+                            <iframe
+                                src="https://my.spline.design/interactivesparkletterwithparticleeffect-DvbYbyDICuH9HgKE0XImdXGb/"
+                                style={{ width: '100%', height: '100%', border: 'none' }}
+                                title="Interactive 3D Spark Letter"
+                                loading="lazy"
+                            />
+                        </div>
+                        {/* Desktop-only: Toggle interactive mode */}
+                        {!isMobile && (
+                            <button
+                                onClick={() => setLetterActive(!letterActive)}
+                                className={`absolute z-20 px-4 py-2 rounded-full text-[10px] uppercase tracking-widest font-bold transition-all duration-300 backdrop-blur-sm ${letterActive
+                                        ? 'top-4 right-4 bg-amber-500/90 text-black hover:bg-amber-400'
+                                        : 'top-4 right-4 bg-white/10 text-white/60 hover:bg-white/20 hover:text-white border border-white/10'
+                                    }`}
+                            >
+                                {letterActive ? '✖ Exit Interactive' : '✋ Click to Interact'}
+                            </button>
+                        )}
                         {/* Solid overlay to fully cover and block the Spline watermark button */}
                         <div className="absolute bottom-2 right-0 z-20 bg-[#050505] px-6 py-3 rounded-tl-2xl flex items-center gap-2" style={{ minWidth: '220px', minHeight: '52px' }}>
                             <span className="text-[11px] text-gray-500 uppercase tracking-[0.3em]">Powered by</span>
