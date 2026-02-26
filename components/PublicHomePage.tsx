@@ -128,6 +128,8 @@ const PublicHomePage: React.FC<PublicHomePageProps> = ({ onSelectTier, onNavigat
                         allow="autoplay"
                     />
                 </div>
+                {/* Cover the Spline watermark on the particles */}
+                <div className="absolute bottom-0 right-0 w-48 h-14 z-[2] bg-[#050505]" />
 
                 {/* Hero Content */}
                 <div ref={hero.ref} className={`relative z-10 text-center max-w-4xl mx-auto px-6 transition-all duration-1000 ${hero.visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
@@ -142,7 +144,7 @@ const PublicHomePage: React.FC<PublicHomePageProps> = ({ onSelectTier, onNavigat
                     <p className="text-lg md:text-2xl text-gray-300 font-light max-w-2xl mx-auto mb-4 leading-relaxed">
                         Write. Direct. Generate. Publish.
                     </p>
-                    <p className="text-sm md:text-base text-gray-500 max-w-xl mx-auto mb-12 leading-relaxed">
+                    <p className="text-sm md:text-base text-white max-w-xl mx-auto mb-12 leading-relaxed">
                         An all-in-one AI-powered creative suite for writers, filmmakers, marketers, and creators.
                         Screenplays, podcasts, images, videos, emails — one workspace, infinite possibilities.
                     </p>
