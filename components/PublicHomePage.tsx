@@ -150,8 +150,8 @@ const PublicHomePage: React.FC<PublicHomePageProps> = ({ onSelectTier, onNavigat
                     <button
                         onClick={() => setParticlesActive(!particlesActive)}
                         className={`absolute z-[3] px-4 py-2 rounded-full text-[10px] uppercase tracking-widest font-bold transition-all duration-300 backdrop-blur-sm ${particlesActive
-                            ? 'bottom-16 left-4 bg-amber-500/90 text-black hover:bg-amber-400'
-                            : 'bottom-16 left-4 bg-white/10 text-white/60 hover:bg-white/20 hover:text-white border border-white/10'
+                            ? 'bottom-2 left-4 bg-amber-500/90 text-black hover:bg-amber-400'
+                            : 'bottom-2 left-4 bg-white/10 text-white/60 hover:bg-white/20 hover:text-white border border-white/10'
                             }`}
                     >
                         {particlesActive ? '✖ Exit Interactive' : '✋ Click to Interact'}
