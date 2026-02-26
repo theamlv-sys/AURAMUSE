@@ -121,10 +121,11 @@ const PublicHomePage: React.FC<PublicHomePageProps> = ({ onSelectTier, onNavigat
                 {/* Spline 3D Particles overlay — renders on top of video */}
                 <div className="absolute inset-0 z-[1]">
                     <iframe
-                        src="https://my.spline.design/particles-U8Po1xhiaMhRXy6Umx9YXcsC/"
-                        style={{ width: '100%', height: '100%', border: 'none' }}
+                        src="https://my.spline.design/particles-U8Po1xhiaMhRXy6Umx9YXcsC/?transparent=true"
+                        style={{ width: '100%', height: '100%', border: 'none', background: 'transparent' }}
                         title="3D Particles Background"
                         loading="eager"
+                        allow="autoplay"
                     />
                     <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[#050505] pointer-events-none" />
                 </div>
