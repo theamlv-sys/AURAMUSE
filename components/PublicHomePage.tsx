@@ -129,7 +129,10 @@ const PublicHomePage: React.FC<PublicHomePageProps> = ({ onSelectTier, onNavigat
                     />
                 </div>
                 {/* Cover the Spline watermark on the particles */}
-                <div className="absolute bottom-0 right-0 w-48 h-14 z-[2] bg-[#050505]" />
+                <div className="absolute bottom-0 right-0 z-[2] bg-[#050505] px-4 py-2 rounded-tl-xl flex items-center gap-1.5">
+                    <span className="text-[9px] text-gray-500 uppercase tracking-[0.3em]">Powered by</span>
+                    <span className="text-[10px] font-serif font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-yellow-500">AuraDomo</span>
+                </div>
 
                 {/* Hero Content */}
                 <div ref={hero.ref} className={`relative z-10 text-center max-w-4xl mx-auto px-6 transition-all duration-1000 ${hero.visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
@@ -247,7 +250,10 @@ const PublicHomePage: React.FC<PublicHomePageProps> = ({ onSelectTier, onNavigat
                             loading="lazy"
                         />
                         {/* Solid overlay to fully cover and block the Spline watermark button */}
-                        <div className="absolute bottom-0 right-0 w-48 h-14 z-20 bg-[#050505] rounded-tl-xl" />
+                        <div className="absolute bottom-0 right-0 z-20 bg-[#050505] px-4 py-2 rounded-tl-xl flex items-center gap-1.5">
+                            <span className="text-[9px] text-gray-500 uppercase tracking-[0.3em]">Powered by</span>
+                            <span className="text-[10px] font-serif font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-yellow-500">AuraDomo</span>
+                        </div>
                         <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#050505] to-transparent z-10 pointer-events-none" />
                     </div>
                 </div>
