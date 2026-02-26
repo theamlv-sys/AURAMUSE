@@ -118,8 +118,8 @@ const PublicHomePage: React.FC<PublicHomePageProps> = ({ onSelectTier, onNavigat
                     <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-[#050505]" />
                     <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,#050505_80%)] opacity-60" />
                 </div>
-                {/* Spline 3D Particles overlay — renders on top of video */}
-                <div className="absolute inset-0 z-[1]">
+                {/* Spline 3D Particles overlay — blends with video via screen mode */}
+                <div className="absolute inset-0 z-[1]" style={{ mixBlendMode: 'screen' }}>
                     <iframe
                         src="https://my.spline.design/particles-U8Po1xhiaMhRXy6Umx9YXcsC/?transparent=true"
                         style={{ width: '100%', height: '100%', border: 'none', background: 'transparent' }}
@@ -127,7 +127,6 @@ const PublicHomePage: React.FC<PublicHomePageProps> = ({ onSelectTier, onNavigat
                         loading="eager"
                         allow="autoplay"
                     />
-                    <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[#050505] pointer-events-none" />
                 </div>
 
                 {/* Hero Content */}
@@ -245,7 +244,8 @@ const PublicHomePage: React.FC<PublicHomePageProps> = ({ onSelectTier, onNavigat
                             title="Interactive 3D Spark Letter"
                             loading="lazy"
                         />
-                        {/* Overlay to cover Spline watermark */}
+                        {/* Solid overlay to fully cover and block the Spline watermark button */}
+                        <div className="absolute bottom-0 right-0 w-48 h-14 z-20 bg-[#050505] rounded-tl-xl" />
                         <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#050505] to-transparent z-10 pointer-events-none" />
                     </div>
                 </div>
