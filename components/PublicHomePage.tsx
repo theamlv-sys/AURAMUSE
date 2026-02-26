@@ -45,9 +45,9 @@ const SHOWCASE = [
         align: 'right' as const,
     },
     {
-        title: 'Multi-Model Intelligence',
-        desc: 'Run Gemini, GPT-4o, and Claude side-by-side in Parallel Mode, or have them debate and refine each other\'s work in Collaboration Mode. Best-of-breed, every time.',
-        visual: '🧠',
+        title: 'All-in-One Command Center',
+        desc: 'Email campaigns, YouTube analytics, social media scheduling, slide decks, newsletters, and ebooks — all generated and managed from a single AI-powered workspace.',
+        visual: '🚀',
         align: 'left' as const,
     },
 ];
@@ -117,6 +117,15 @@ const PublicHomePage: React.FC<PublicHomePageProps> = ({ onSelectTier, onNavigat
                     />
                     <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-[#050505]" />
                     <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,#050505_80%)] opacity-60" />
+                </div>
+                {/* Spline 3D Particles overlay — renders on top of video when published */}
+                <div className="absolute inset-0 z-[1] pointer-events-none">
+                    {/* @ts-ignore — spline-viewer is a web component */}
+                    <spline-viewer
+                        url="https://prod.spline.design/0331a6dd-2f23-447e-9fac-ccf64e88fd1b/scene.splinecode"
+                        style={{ width: '100%', height: '100%' } as any}
+                        loading-anim-type="none"
+                    />
                 </div>
 
                 {/* Hero Content */}
