@@ -381,6 +381,8 @@ const PublicHomePage: React.FC<PublicHomePageProps> = ({ onSelectTier, onNavigat
             {/* ━━━━━━━━━━━━━━━ INLINE CSS ━━━━━━━━━━━━━━━ */}
             <style>{`
                 html { scroll-behavior: smooth; }
+                html::-webkit-scrollbar { display: none; }
+                html { -ms-overflow-style: none; scrollbar-width: none; }
                 @keyframes bounce { 0%, 100% { transform: translateY(0) translateX(-50%); } 50% { transform: translateY(-12px) translateX(-50%); } }
                 .animate-bounce { animation: bounce 2s infinite; }
                 @media (max-width: 768px) {
