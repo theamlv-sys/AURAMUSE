@@ -23,9 +23,9 @@ function useReveal() {
 
 // ─── FEATURE DATA ──────────────────────────────────────────
 const FEATURES = [
-    { icon: '✍️', title: 'AI Writing Engine', desc: 'Draft screenplays, novels, blogs, and newsletters with an AI co-writer powered by Gemini, GPT-4o, and Claude — all in one workspace.' },
+    { icon: '✍️', title: 'AI Writing Engine', desc: 'Draft screenplays, novels, blogs, and newsletters with an AI co-writer — all in one workspace.' },
     { icon: '🎙️', title: 'Voice & Audio Studio', desc: 'Generate multi-speaker dialogue, podcasts, and voiceovers with 30+ AI voices. Full director mode with per-character emotion control.' },
-    { icon: '🎨', title: 'Image Generation', desc: 'Create stunning visuals with Imagen 3, Gemini native generation, and style transfer. From concept art to social media graphics.' },
+    { icon: '🎨', title: 'Image Generation', desc: 'Create stunning visuals with advanced AI generation and style transfer. From concept art to social media graphics.' },
     { icon: '🎬', title: 'Video Generation', desc: 'Produce cinematic video clips with Google Veo. Storyboard scenes and generate match-cut sequences from your scripts.' },
     { icon: '📧', title: 'Email Command Center', desc: 'Manage, compose, and schedule Gmail campaigns with AI-powered drafting. Built-in templates and audience analysis.' },
     { icon: '📊', title: 'YouTube & Social', desc: 'Analyze channel performance, generate SEO-optimized titles, thumbnails, and cross-platform social media content.' },
