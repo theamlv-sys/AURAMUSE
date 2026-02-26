@@ -144,10 +144,13 @@ const PublicHomePage: React.FC<PublicHomePageProps> = ({ onSelectTier, onNavigat
                     <h1 className="text-6xl md:text-9xl font-serif font-bold mb-8 leading-none">
                         <span className="text-transparent bg-clip-text bg-gradient-to-br from-amber-200 via-amber-400 to-yellow-600 drop-shadow-2xl">MUSE</span>
                     </h1>
-                    <p className="text-lg md:text-2xl text-gray-300 font-light max-w-2xl mx-auto mb-4 leading-relaxed">
-                        Write. Direct. Generate. Publish.
+                    <p className="text-lg md:text-2xl font-light max-w-2xl mx-auto mb-4 leading-relaxed">
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-yellow-400 font-semibold">Write.</span>{' '}
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-amber-400 font-semibold">Direct.</span>{' '}
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-400 font-semibold">Generate.</span>{' '}
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-amber-300 font-semibold">Publish.</span>
                     </p>
-                    <p className="text-sm md:text-base text-white max-w-xl mx-auto mb-12 leading-relaxed">
+                    <p className="text-sm md:text-base text-amber-100/90 max-w-xl mx-auto mb-12 leading-relaxed">
                         An all-in-one AI-powered creative suite for writers, filmmakers, marketers, and creators.
                         Screenplays, podcasts, images, videos, emails — one workspace, infinite possibilities.
                     </p>
