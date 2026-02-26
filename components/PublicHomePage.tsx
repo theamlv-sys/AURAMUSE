@@ -118,14 +118,15 @@ const PublicHomePage: React.FC<PublicHomePageProps> = ({ onSelectTier, onNavigat
                     <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-transparent to-[#050505]" />
                     <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_0%,#050505_80%)] opacity-60" />
                 </div>
-                {/* Spline 3D Particles overlay — renders on top of video when published */}
-                <div className="absolute inset-0 z-[1] pointer-events-none">
-                    {/* @ts-ignore — spline-viewer is a web component */}
-                    <spline-viewer
-                        url="https://prod.spline.design/0331a6dd-2f23-447e-9fac-ccf64e88fd1b/scene.splinecode"
-                        style={{ width: '100%', height: '100%' } as any}
-                        loading-anim-type="none"
+                {/* Spline 3D Particles overlay — renders on top of video */}
+                <div className="absolute inset-0 z-[1]">
+                    <iframe
+                        src="https://my.spline.design/particles-U8Po1xhiaMhRXy6Umx9YXcsC/"
+                        style={{ width: '100%', height: '100%', border: 'none' }}
+                        title="3D Particles Background"
+                        loading="eager"
                     />
+                    <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-[#050505] pointer-events-none" />
                 </div>
 
                 {/* Hero Content */}
