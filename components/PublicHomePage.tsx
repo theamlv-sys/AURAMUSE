@@ -129,9 +129,9 @@ const PublicHomePage: React.FC<PublicHomePageProps> = ({ onSelectTier, onNavigat
                     />
                 </div>
                 {/* Cover the Spline watermark on the particles */}
-                <div className="absolute bottom-0 right-0 z-[2] bg-[#050505] px-4 py-2 rounded-tl-xl flex items-center gap-1.5">
-                    <span className="text-[9px] text-gray-500 uppercase tracking-[0.3em]">Powered by</span>
-                    <span className="text-[10px] font-serif font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-yellow-500">AuraDomo</span>
+                <div className="absolute bottom-0 right-0 z-[2] bg-[#050505] px-6 py-3 rounded-tl-2xl flex items-center gap-2" style={{ minWidth: '220px', minHeight: '52px' }}>
+                    <span className="text-[11px] text-gray-500 uppercase tracking-[0.3em]">Powered by</span>
+                    <span className="text-sm font-serif font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-yellow-500">AuraDomo</span>
                 </div>
 
                 {/* Hero Content */}
@@ -250,9 +250,9 @@ const PublicHomePage: React.FC<PublicHomePageProps> = ({ onSelectTier, onNavigat
                             loading="lazy"
                         />
                         {/* Solid overlay to fully cover and block the Spline watermark button */}
-                        <div className="absolute bottom-0 right-0 z-20 bg-[#050505] px-4 py-2 rounded-tl-xl flex items-center gap-1.5">
-                            <span className="text-[9px] text-gray-500 uppercase tracking-[0.3em]">Powered by</span>
-                            <span className="text-[10px] font-serif font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-yellow-500">AuraDomo</span>
+                        <div className="absolute bottom-0 right-0 z-20 bg-[#050505] px-6 py-3 rounded-tl-2xl flex items-center gap-2" style={{ minWidth: '220px', minHeight: '52px' }}>
+                            <span className="text-[11px] text-gray-500 uppercase tracking-[0.3em]">Powered by</span>
+                            <span className="text-sm font-serif font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-yellow-500">AuraDomo</span>
                         </div>
                         <div className="absolute bottom-0 left-0 right-0 h-12 bg-gradient-to-t from-[#050505] to-transparent z-10 pointer-events-none" />
                     </div>
