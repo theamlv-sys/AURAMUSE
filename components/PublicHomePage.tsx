@@ -78,6 +78,7 @@ const PublicHomePage: React.FC<PublicHomePageProps> = ({ onSelectTier, onNavigat
     const showcase1 = useReveal();
     const showcase2 = useReveal();
     const splineSection = useReveal();
+    const aiAssistant = useReveal();
     const pricing = useReveal();
 
     return (
@@ -186,8 +187,8 @@ const PublicHomePage: React.FC<PublicHomePageProps> = ({ onSelectTier, onNavigat
                         <h2 className="text-4xl md:text-6xl font-serif font-bold text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-500 mb-6">
                             One Suite. Infinite Creative Power.
                         </h2>
-                        <p className="text-gray-500 max-w-xl mx-auto text-sm leading-relaxed">
-                            AuraDomoMuse combines the world's most advanced AI models into a single creative operating system.
+                        <p className="text-gray-400 max-w-2xl mx-auto text-sm leading-relaxed">
+                            Meet Muse — the world's first hands-off agentic writing assistant. Talk to it, direct it, and watch it create for you in real time.
                         </p>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -205,6 +206,52 @@ const PublicHomePage: React.FC<PublicHomePageProps> = ({ onSelectTier, onNavigat
                                 </div>
                             </div>
                         ))}
+                    </div>
+                </div>
+            </section>
+
+            {/* ━━━━━━━━━━━━━━━ AI TALKING WRITING ASSISTANT ━━━━━━━━━━━━━━━ */}
+            <section className="relative py-32 px-6 overflow-hidden">
+                <div className="absolute inset-0 bg-gradient-to-b from-[#050505] via-[#0a0808] to-[#050505]" />
+                {/* Subtle glow */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-amber-500/5 rounded-full blur-[120px] pointer-events-none" />
+
+                <div ref={aiAssistant.ref} className={`relative z-10 max-w-6xl mx-auto transition-all duration-1000 ${aiAssistant.visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'}`}>
+                    <div className="text-center mb-16">
+                        <span className="text-[10px] uppercase tracking-[0.4em] text-amber-500/70 block mb-4">Your AI Partner</span>
+                        <h2 className="text-4xl md:text-6xl font-serif font-bold text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-400 mb-6">
+                            Talk to Muse. It Writes for You.
+                        </h2>
+                        <p className="text-gray-400 max-w-2xl mx-auto text-base leading-relaxed">
+                            Muse isn't just another text box. It's an agentic AI writing assistant that listens, understands context, and creates alongside you — hands-free.
+                        </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                        {/* Card 1 */}
+                        <div className="group relative p-8 rounded-3xl border border-amber-500/10 bg-gradient-to-b from-amber-500/[0.03] to-transparent hover:border-amber-500/30 transition-all duration-500">
+                            <div className="text-5xl mb-6">🎤</div>
+                            <h3 className="text-xl font-bold text-white mb-3 group-hover:text-amber-300 transition-colors">Voice-First Creation</h3>
+                            <p className="text-sm text-gray-400 leading-relaxed">
+                                Speak your ideas naturally. Muse captures your voice, understands your intent, and transforms spoken words into polished scripts, blogs, and stories.
+                            </p>
+                        </div>
+                        {/* Card 2 */}
+                        <div className="group relative p-8 rounded-3xl border border-amber-500/10 bg-gradient-to-b from-amber-500/[0.03] to-transparent hover:border-amber-500/30 transition-all duration-500">
+                            <div className="text-5xl mb-6">🤖</div>
+                            <h3 className="text-xl font-bold text-white mb-3 group-hover:text-amber-300 transition-colors">Agentic Workflow</h3>
+                            <p className="text-sm text-gray-400 leading-relaxed">
+                                Give Muse a direction and watch it work. It drafts, revises, formats, and structures your content autonomously — stepping in only when you want to steer.
+                            </p>
+                        </div>
+                        {/* Card 3 */}
+                        <div className="group relative p-8 rounded-3xl border border-amber-500/10 bg-gradient-to-b from-amber-500/[0.03] to-transparent hover:border-amber-500/30 transition-all duration-500">
+                            <div className="text-5xl mb-6">💬</div>
+                            <h3 className="text-xl font-bold text-white mb-3 group-hover:text-amber-300 transition-colors">Live Collaboration</h3>
+                            <p className="text-sm text-gray-400 leading-relaxed">
+                                Chat with Muse like a creative partner. Ask it to rewrite a scene, change tone, add dialogue, or brainstorm — and it responds in real time with context-aware output.
+                            </p>
+                        </div>
                     </div>
                 </div>
             </section>
