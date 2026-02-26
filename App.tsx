@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import ProjectSelector from './components/ProjectSelector';
 import Editor from './components/Editor';
+import PublicHomePage from './components/PublicHomePage';
 import { googleDriveService } from './services/googleDriveService';
 import ChatInterface from './components/ChatInterface';
 import AssetLibrary from './components/AssetLibrary';
@@ -510,9 +511,9 @@ const App: React.FC = () => {
     if (viewMode === 'LEGAL_PRIVACY') return <PrivacyPolicy onBack={() => navigateToView('HOME')} theme={theme} />;
     if (viewMode === 'LEGAL_TERMS') return <TermsOfService onBack={() => navigateToView('HOME')} theme={theme} />;
 
-    // 1. Landing Page
+    // 1. Public Homepage (accessible without login)
     if (!hasAccess) {
-        return <LandingPage onSelectTier={handleTierSelection} onNavigateLegal={(mode) => navigateToView(mode)} />;
+        return <PublicHomePage onSelectTier={handleTierSelection} onNavigateLegal={(mode) => navigateToView(mode)} />;
     }
 
     // 2. Main App
