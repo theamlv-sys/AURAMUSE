@@ -511,9 +511,14 @@ const App: React.FC = () => {
     if (viewMode === 'LEGAL_PRIVACY') return <PrivacyPolicy onBack={() => navigateToView('HOME')} theme={theme} />;
     if (viewMode === 'LEGAL_TERMS') return <TermsOfService onBack={() => navigateToView('HOME')} theme={theme} />;
 
-    // 1. Public Homepage (accessible without login)
-    if (!hasAccess) {
+    // 1. Public Homepage (no session — publicly accessible, explains the app)
+    if (!hasAccess && !session) {
         return <PublicHomePage onSelectTier={handleTierSelection} onNavigateLegal={(mode) => navigateToView(mode)} />;
+    }
+
+    // 2. Tier Selection (user logged in via Google but hasn't picked a plan yet)
+    if (!hasAccess && session) {
+        return <LandingPage onSelectTier={handleTierSelection} onNavigateLegal={(mode) => navigateToView(mode)} />;
     }
 
     // 2. Main App
