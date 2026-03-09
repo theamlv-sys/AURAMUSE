@@ -28,7 +28,7 @@ const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({ onBack, theme }) => {
 
                 <div className="text-center mb-12">
                     <h1 className={`text-4xl md:text-5xl font-serif font-bold ${heading} mb-4`}>Privacy Policy</h1>
-                    <p className="text-gray-500 text-sm font-mono">Effective Date: February 9, 2026</p>
+                    <p className="text-gray-500 text-sm font-mono">Effective Date: March 9, 2026</p>
                 </div>
 
                 <div className="space-y-12 text-sm leading-relaxed">
@@ -89,11 +89,60 @@ const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({ onBack, theme }) => {
                                 <h3 className={`font-bold ${heading} mb-2`}>Not For Advertising</h3>
                                 <p className="text-gray-500 text-xs mb-2">We never use your Google Workspace data for advertising purposes.</p>
                             </div>
+                            <div>
+                                <h3 className={`font-bold ${heading} mb-2`}>Data Caching</h3>
+                                <p className="text-gray-500 text-xs mb-2">We do not permanently store the content of your emails. Email data is fetched in real time during your active session and is not cached or persisted on our servers after your session ends.</p>
+                            </div>
+                            <div>
+                                <h3 className={`font-bold ${heading} mb-2`}>Session-Only Access</h3>
+                                <p className="text-gray-500 text-xs mb-2">Your Google user data (emails, profile information) is accessed only during your authenticated session. Once you log out or your session expires, all fetched Google data is discarded from memory.</p>
+                            </div>
                         </div>
                     </section>
 
                     <section>
-                        <h2 className={`text-xl font-bold ${heading} mb-4 pb-2 border-b ${border}`}>4. AI Sub-Processors</h2>
+                        <h2 className={`text-xl font-bold ${heading} mb-4 pb-2 border-b ${border}`}>4. Google User Data Retention</h2>
+                        <p className="mb-4">
+                            We retain Google user data only as long as necessary to provide the services you have requested:
+                        </p>
+                        <ul className="list-disc pl-5 space-y-3 marker:text-muse-500">
+                            <li><strong>Authentication Data (name, email, profile picture):</strong> Retained for the duration of your active account. This data is stored in our secure Supabase database and is used solely to identify you within the application.</li>
+                            <li><strong>Gmail Data (email content):</strong> Accessed in real time during your session only. <strong>We do not store, cache, or persist any email content on our servers.</strong> Email data exists only in your browser's memory during your active session and is discarded when you navigate away or log out.</li>
+                            <li><strong>Google Drive Data:</strong> Accessed in real time for project file management. File metadata may be cached temporarily during your session but is not stored permanently on our servers.</li>
+                            <li><strong>OAuth Tokens:</strong> Your Google OAuth refresh token is stored securely and encrypted in our database to maintain your authenticated session. Tokens are deleted immediately when you revoke access or delete your account.</li>
+                        </ul>
+                    </section>
+
+                    <section className={`p-8 rounded-2xl border ${cardBg}`}>
+                        <h2 className={`text-xl font-bold ${heading} mb-4`}>5. Google User Data Deletion</h2>
+                        <p className="mb-4">
+                            You have the right to request deletion of all Google user data associated with your account at any time. Here is how:
+                        </p>
+                        <div className="grid md:grid-cols-2 gap-6 mb-6">
+                            <div>
+                                <h3 className={`font-bold ${heading} mb-2`}>Request Deletion via Email</h3>
+                                <p className="text-gray-500 text-xs mb-2">Send an email to <a href="mailto:auraassistantai@auradomo.com" className="text-muse-500 hover:underline">auraassistantai@auradomo.com</a> with the subject line "Data Deletion Request." We will process your request and delete all associated Google user data within <strong>30 days</strong>.</p>
+                            </div>
+                            <div>
+                                <h3 className={`font-bold ${heading} mb-2`}>Revoke Google Access</h3>
+                                <p className="text-gray-500 text-xs mb-2">You can revoke AuraDomoMuse's access to your Google account at any time by visiting your <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener noreferrer" className="text-muse-500 hover:underline">Google Account Permissions</a> page. Upon revocation, we will no longer be able to access any of your Google data, and any stored OAuth tokens will become invalid.</p>
+                            </div>
+                            <div>
+                                <h3 className={`font-bold ${heading} mb-2`}>Account Deletion</h3>
+                                <p className="text-gray-500 text-xs mb-2">If you delete your AuraDomoMuse account, all associated data — including your Google authentication tokens, profile information, project files, and any cached metadata — will be <strong>permanently deleted within 30 days</strong>.</p>
+                            </div>
+                            <div>
+                                <h3 className={`font-bold ${heading} mb-2`}>What Gets Deleted</h3>
+                                <p className="text-gray-500 text-xs mb-2">Upon deletion request: your user profile, OAuth tokens, project data, story bibles, generated content, subscription records, and all Google-sourced metadata are permanently removed from our systems.</p>
+                            </div>
+                        </div>
+                        <p className="text-xs italic text-gray-500">
+                            Note: Deletion of data processed by third-party AI sub-processors (e.g., prompts sent to Google Gemini) is governed by those providers' own data retention policies. We configure our API usage to opt out of training where possible.
+                        </p>
+                    </section>
+
+                    <section>
+                        <h2 className={`text-xl font-bold ${heading} mb-4 pb-2 border-b ${border}`}>6. AI Sub-Processors</h2>
                         <p className="mb-4">
                             We use third-party AI models to provide generative features (Text, Image, Audio, Video).
                         </p>
@@ -107,14 +156,29 @@ const PrivacyPolicy: React.FC<PrivacyPolicyProps> = ({ onBack, theme }) => {
                     </section>
 
                     <section>
-                        <h2 className={`text-xl font-bold ${heading} mb-4 pb-2 border-b ${border}`}>5. Data Security & Storage</h2>
+                        <h2 className={`text-xl font-bold ${heading} mb-4 pb-2 border-b ${border}`}>7. Data Security & Storage</h2>
                         <p>
                             All data is encrypted in transit using SSL/TLS. Your project data is stored in a secure Supabase database with Row Level Security (RLS) enabled, meaning only your authenticated account can access your records.
                         </p>
                     </section>
 
                     <section>
-                        <h2 className={`text-xl font-bold ${heading} mb-4 pb-2 border-b ${border}`}>6. Contact Us</h2>
+                        <h2 className={`text-xl font-bold ${heading} mb-4 pb-2 border-b ${border}`}>8. Your Rights</h2>
+                        <p className="mb-4">
+                            Under applicable data protection laws, you have the following rights:
+                        </p>
+                        <ul className="list-disc pl-5 space-y-2 marker:text-muse-500">
+                            <li><strong>Right to Access:</strong> Request a copy of the personal data we hold about you.</li>
+                            <li><strong>Right to Rectification:</strong> Request correction of inaccurate personal data.</li>
+                            <li><strong>Right to Erasure:</strong> Request deletion of your personal data and all associated Google user data.</li>
+                            <li><strong>Right to Restrict Processing:</strong> Request limitation of how we process your data.</li>
+                            <li><strong>Right to Data Portability:</strong> Request your data in a machine-readable format.</li>
+                            <li><strong>Right to Revoke Consent:</strong> Withdraw consent for data processing at any time via your <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener noreferrer" className="text-muse-500 hover:underline">Google Account Permissions</a> or by contacting us.</li>
+                        </ul>
+                    </section>
+
+                    <section>
+                        <h2 className={`text-xl font-bold ${heading} mb-4 pb-2 border-b ${border}`}>9. Contact Us</h2>
                         <p>
                             If you have any questions about this Privacy Policy, please contact us at: <br />
                             <a href="mailto:auraassistantai@auradomo.com" className="text-muse-500 hover:underline">auraassistantai@auradomo.com</a>
