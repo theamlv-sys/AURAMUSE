@@ -15,7 +15,6 @@ import NotesMode from './components/NotesMode';
 import CalendarMode from './components/CalendarMode';
 import EmailStudio from './components/EmailStudio';
 import { CreativeSuite } from './components/CreativeSuite';
-import { ApiKeyGuard } from './components/ApiKeyGuard';
 import { VideoStudio } from './components/VideoStudio';
 import YouTubeTools from './components/YouTubeTools';
 import SocialTools from './components/SocialTools';
@@ -560,9 +559,7 @@ const App: React.FC = () => {
                         </svg>
                     </button>
                 </div>
-                <ApiKeyGuard>
-                    <VideoStudio />
-                </ApiKeyGuard>
+                <VideoStudio />
             </div>
         );
     }
