@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { generateSVG } from '../services/geminiService';
+import React, { useState, useRef, useEffect } from 'react';
+import { generateSVGChat } from '../services/geminiService';
 import { convertSVGToMP4 } from '../services/videoService';
 
 interface MotionSvgAIProps {
@@ -8,19 +8,11 @@ interface MotionSvgAIProps {
     userTier: string;
 }
 
-const GenButton = ({ onClick, loading, disabled, label, loadingLabel }: { onClick: () => void, loading: boolean, disabled: boolean, label: string, loadingLabel: string }) => (
-    <button
-        onClick={onClick}
-        disabled={disabled || loading}
-        className={`w-full py-2.5 rounded-lg flex items-center justify-center gap-2 font-medium text-white transition-all shadow-md active:scale-[0.98] ${disabled || loading ? 'bg-muse-400 cursor-not-allowed' : 'bg-muse-600 hover:bg-muse-500 hover:shadow-lg hover:shadow-muse-500/20'}`}
-    >
-        {loading ? (
-            <><div className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin" /> {loadingLabel}</>
-        ) : (
-            <><span className="text-lg">✨</span> {label}</>
-        )}
-    </button>
-);
+interface Message {
+    role: 'user' | 'model';
+    content: string;
+    svgCode?: string;
+}
 
 const MotionSvgAI: React.FC<MotionSvgAIProps> = ({ onBack, theme, userTier }) => {
     const isDark = theme === 'dark';
@@ -30,33 +22,73 @@ const MotionSvgAI: React.FC<MotionSvgAIProps> = ({ onBack, theme, userTier }) =>
     const cardBg = isDark ? 'bg-[#0a0a0f]' : 'bg-gray-50';
     const borderColor = isDark ? 'border-gray-800' : 'border-gray-200';
     const inputBg = isDark ? 'bg-[#111116] border-gray-800 text-gray-200' : 'bg-white border-gray-300 text-gray-900';
+    
+    const isShowrunner = userTier === 'SHOWRUNNER';
 
-    const [motionSvgPrompt, setMotionSvgPrompt] = useState('');
-    const [motionSvgIsPromotional, setMotionSvgIsPromotional] = useState(false);
-    const [motionSvgCode, setMotionSvgCode] = useState('');
-    const [motionSvgLoading, setMotionSvgLoading] = useState(false);
+    const [messages, setMessages] = useState<Message[]>([
+        { role: 'model', content: "Hello! I'm Muse, your Motion Graphics Assistant. Describe the animation or UI component you want to create, and I'll generate the SVG for you. We can iterate on it together!" }
+    ]);
+    const [inputText, setInputText] = useState('');
+    const [useProModel, setUseProModel] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
     const [motionSvgExporting, setMotionSvgExporting] = useState(false);
     const [motionSvgExportProgress, setMotionSvgExportProgress] = useState(0);
 
-    const handleGenerateMotionSvg = async () => {
-        setMotionSvgLoading(true);
-        try {
-            const svg = await generateSVG(motionSvgPrompt, motionSvgIsPromotional);
-            setMotionSvgCode(svg);
-        } catch (e) {
-            console.error(e);
-            alert('Failed to generate SVG.');
-        }
-        setMotionSvgLoading(false);
+    const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     };
 
+    useEffect(() => {
+        scrollToBottom();
+    }, [messages, isLoading]);
+
+    const handleSendMessage = async () => {
+        if (!inputText.trim() || isLoading) return;
+
+        const newMessages: Message[] = [...messages, { role: 'user', content: inputText.trim() }];
+        setMessages(newMessages);
+        setInputText('');
+        setIsLoading(true);
+
+        try {
+            // Keep only the context we need for the API, limit to recent history if necessary (but full history is better for iteration)
+            const historyForApi = newMessages.map(m => ({ role: m.role, content: m.content }));
+            
+            const response = await generateSVGChat(historyForApi, useProModel);
+            
+            setMessages(prev => [...prev, {
+                role: 'model',
+                content: response.text,
+                svgCode: response.svgCode
+            }]);
+        } catch (e) {
+            console.error(e);
+            setMessages(prev => [...prev, { role: 'model', content: "I encountered an error while trying to process that request." }]);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSendMessage();
+        }
+    };
+
+    // Find the latest SVG code to display in the preview
+    const latestSvgCode = [...messages].reverse().find(m => m.svgCode)?.svgCode;
+
     const handleExportMotionSvg = async () => {
-        if (!motionSvgCode) return;
+        if (!latestSvgCode) return;
         setMotionSvgExporting(true);
         setMotionSvgExportProgress(0);
         try {
-            const duration = motionSvgIsPromotional ? 30 : 15;
-            const videoBlob = await convertSVGToMP4(motionSvgCode, duration, (progress) => {
+            // Defaulting duration to 15 seconds unless it's a huge code block which might imply a longer promo
+            const duration = latestSvgCode.length > 5000 ? 30 : 15;
+            const videoBlob = await convertSVGToMP4(latestSvgCode, duration, (progress) => {
                 setMotionSvgExportProgress(progress);
             });
 
@@ -102,6 +134,22 @@ const MotionSvgAI: React.FC<MotionSvgAIProps> = ({ onBack, theme, userTier }) =>
                         </h1>
                     </div>
                 </div>
+                
+                {/* Center Toggle if Showrunner */}
+                <div className="flex items-center justify-center flex-1">
+                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border ${borderColor} ${cardBg} shadow-inner cursor-default`} title={!isShowrunner ? "Requires Showrunner Tier" : "Toggle Creative Engine"}>
+                        <span className={`text-xs font-medium ${!useProModel ? textColor : subTextColor}`}>Gemini 2.5 Pro</span>
+                        <button 
+                            onClick={() => isShowrunner && setUseProModel(!useProModel)}
+                            disabled={!isShowrunner}
+                            className={`relative w-10 h-5 rounded-full transition-colors ${useProModel ? 'bg-muse-500' : isDark ? 'bg-gray-700' : 'bg-gray-300'} ${!isShowrunner && 'opacity-50 cursor-not-allowed'}`}
+                        >
+                            <div className={`absolute top-1 left-1 w-3 h-3 rounded-full bg-white transition-transform ${useProModel ? 'translate-x-5' : 'translate-x-0'}`} />
+                        </button>
+                        <span className={`text-xs font-bold ${useProModel ? 'text-transparent bg-clip-text bg-gradient-to-r from-muse-400 to-purple-500' : subTextColor}`}>Gemini 3.1 Pro ✦</span>
+                    </div>
+                </div>
+
                 <div className="flex items-center gap-4">
                     <div className={`px-3 py-1.5 rounded-lg border ${isDark ? 'bg-gray-800 border-gray-700' : 'bg-gray-100 border-gray-200'} flex items-center gap-2`}>
                         <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
@@ -111,87 +159,114 @@ const MotionSvgAI: React.FC<MotionSvgAIProps> = ({ onBack, theme, userTier }) =>
             </header>
 
             {/* Main Content Area */}
-            <div className={`flex-1 overflow-auto p-6 md:p-8 flex flex-col lg:flex-row gap-8`}>
+            <div className={`flex-1 overflow-hidden flex flex-col lg:flex-row`}>
                 
-                {/* Left Panel: Controls */}
-                <div className="w-full lg:w-[400px] shrink-0 space-y-6">
-                    <div className={`${cardBg} rounded-xl border ${borderColor} p-6 shadow-sm`}>
-                        <h2 className={`text-lg font-bold mb-2 ${textColor}`}>Generate Animation</h2>
-                        <p className={`text-sm ${subTextColor} mb-6`}>
-                            Provide a detailed prompt and MotionSVG AI will generate a highly optimized, animated vector graphic sequence.
-                        </p>
-                        
-                        <div className="space-y-5">
-                            <div>
-                                <label className={`text-xs font-bold uppercase tracking-wider ${subTextColor} mb-1.5 block`}>
-                                    Prompt
-                                </label>
-                                <textarea
-                                    value={motionSvgPrompt}
-                                    onChange={e => setMotionSvgPrompt(e.target.value)}
-                                    rows={5}
-                                    placeholder="e.g., A futuristic glowing orb bouncing in a cyberpunk city skyline..."
-                                    className={`w-full rounded-xl px-4 py-3 border text-sm ${inputBg} focus:ring-2 focus:ring-muse-500 outline-none resize-none transition-all shadow-inner`}
-                                />
+                {/* Left Panel: Chat Interface */}
+                <div className={`w-full lg:w-[450px] shrink-0 flex flex-col border-r ${borderColor} ${cardBg}`}>
+                    
+                    {/* Chat Messages */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-6">
+                        {messages.map((msg, idx) => (
+                            <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                <div className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${
+                                    msg.role === 'user' 
+                                        ? 'bg-muse-600 text-white rounded-tr-sm' 
+                                        : `${isDark ? 'bg-gray-800 text-gray-200' : 'bg-white text-gray-800'} border ${borderColor} rounded-tl-sm`
+                                }`}>
+                                    <div className="text-sm whitespace-pre-wrap leading-relaxed">
+                                        {msg.role === 'model' && msg.content === '' && msg.svgCode ? (
+                                            <span className="italic opacity-80">Generated a new SVG iteration.</span>
+                                        ) : (
+                                            msg.content.replace(/```html[\s\S]*?```/g, '\n[SVG Generated in Preview]\n')
+                                        )}
+                                    </div>
+                                </div>
                             </div>
-
-                            <div>
-                                <label className={`text-xs font-bold uppercase tracking-wider ${subTextColor} mb-1.5 block`}>
-                                    Video Format & Duration
-                                </label>
-                                <select
-                                    value={motionSvgIsPromotional ? 'true' : 'false'}
-                                    onChange={e => setMotionSvgIsPromotional(e.target.value === 'true')}
-                                    className={`w-full rounded-xl px-4 py-3 border text-sm ${inputBg} shadow-inner cursor-pointer`}
-                                >
-                                    <option value="false">Standard Loop (15-30s)</option>
-                                    <option value="true">Promotional Sequence (30-60s)</option>
-                                </select>
+                        ))}
+                        {isLoading && (
+                            <div className="flex justify-start">
+                                <div className={`rounded-2xl px-5 py-4 shadow-sm ${isDark ? 'bg-gray-800' : 'bg-white'} border ${borderColor} rounded-tl-sm`}>
+                                    <div className="flex space-x-2">
+                                        <div className="w-2 h-2 bg-muse-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                                        <div className="w-2 h-2 bg-muse-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                                        <div className="w-2 h-2 bg-muse-400 rounded-full animate-bounce"></div>
+                                    </div>
+                                </div>
                             </div>
+                        )}
+                        <div ref={messagesEndRef} />
+                    </div>
 
-                            <GenButton
-                                onClick={handleGenerateMotionSvg}
-                                loading={motionSvgLoading}
-                                disabled={!motionSvgPrompt.trim()}
-                                label="Generate Vector Animation"
-                                loadingLabel="Designing Sequence..."
+                    {/* Chat Input */}
+                    <div className={`p-4 border-t ${borderColor} ${bgColor}`}>
+                        <div className={`flex items-end gap-2 rounded-2xl border ${borderColor} ${inputBg} p-2 shadow-inner focus-within:ring-2 focus-within:ring-muse-500/50 transition-all`}>
+                            <textarea
+                                value={inputText}
+                                onChange={e => setInputText(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                placeholder="Message Muse to generate or edit..."
+                                className="w-full max-h-32 min-h-[44px] bg-transparent resize-none outline-none text-sm px-2 py-3"
+                                rows={1}
                             />
+                            <button
+                                onClick={handleSendMessage}
+                                disabled={!inputText.trim() || isLoading}
+                                className={`p-2.5 rounded-xl shrink-0 transition-all ${
+                                    !inputText.trim() || isLoading 
+                                    ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed' 
+                                    : 'bg-muse-600 hover:bg-muse-500 text-white shadow-md active:scale-95'
+                                }`}
+                            >
+                                <svg className="w-5 h-5 translate-x-0.5 -translate-y-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                                </svg>
+                            </button>
                         </div>
+                        <p className={`text-center text-[10px] mt-2 ${subTextColor}`}>
+                            Press Enter to send, Shift + Enter for new line
+                        </p>
                     </div>
                 </div>
 
                 {/* Right Panel: Preview & Export */}
-                <div className={`flex-1 flex flex-col ${cardBg} rounded-xl border ${borderColor} overflow-hidden shadow-sm relative`}>
-                    <div className={`p-4 border-b ${borderColor} flex justify-between items-center bg-black/5 dark:bg-white/5`}>
-                        <h3 className={`font-bold ${textColor}`}>Live Output Preview</h3>
-                        {motionSvgCode && (
+                <div className={`flex-1 flex flex-col relative bg-[url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAAXNSR0IArs4c6QAAACVJREFUKFNjZCASMDKgAnv37v3/nJwciuTIoJhBDSWjVJwMZjAArN0Gwd52l3IAAAAASUVORK5CYII=')] dark:opacity-20 opacity-10 bg-repeat`}>
+                    
+                    {/* Floating Export Button */}
+                    <div className="absolute top-6 right-6 z-10">
+                        {latestSvgCode && (
                             <button
                                 onClick={handleExportMotionSvg}
                                 disabled={motionSvgExporting}
-                                className={`px-4 py-1.5 text-sm rounded-lg flex items-center justify-center gap-2 font-medium text-white transition-all shadow-md active:scale-[0.98] ${motionSvgExporting ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'}`}
+                                className={`px-5 py-2.5 text-sm rounded-xl flex items-center justify-center gap-2 font-bold text-white transition-all shadow-xl active:scale-[0.98] ${motionSvgExporting ? 'bg-gray-500 cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 hover:shadow-indigo-500/25 border border-white/10'}`}
                             >
                                 {motionSvgExporting ? (
-                                    <><div className="w-3 h-3 border-2 border-white/50 border-t-white rounded-full animate-spin" /> {Math.round(motionSvgExportProgress * 100)}%</>
+                                    <><div className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin" /> {Math.round(motionSvgExportProgress * 100)}%</>
                                 ) : (
-                                    <>🎥 Export MP4</>
+                                    <>
+                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                                        </svg>
+                                        Export MP4
+                                    </>
                                 )}
                             </button>
                         )}
                     </div>
                     
-                    <div className="flex-1 flex items-center justify-center p-6 bg-[url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAoAAAAKCAYAAACNMs+9AAAAAXNSR0IArs4c6QAAACVJREFUKFNjZCASMDKgAnv37v3/nJwciuTIoJhBDSWjVJwMZjAArN0Gwd52l3IAAAAASUVORK5CYII=')] dark:opacity-20 opacity-10">
-                         {motionSvgCode ? (
-                             <div className="w-full max-w-4xl aspect-video rounded-xl overflow-hidden shadow-2xl relative bg-white" dangerouslySetInnerHTML={{ __html: motionSvgCode }} />
+                    {/* Viewport */}
+                    <div className="absolute inset-0 flex items-center justify-center p-8">
+                         {latestSvgCode ? (
+                             <div className="w-full max-w-5xl aspect-video rounded-2xl overflow-hidden shadow-2xl relative bg-white ring-1 ring-black/5" dangerouslySetInnerHTML={{ __html: latestSvgCode }} />
                          ) : (
                              <div className={`text-center space-y-4 ${subTextColor}`}>
-                                 <div className="w-16 h-16 mx-auto opacity-20">
+                                 <div className="w-20 h-20 mx-auto opacity-20">
                                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
                                          <path strokeLinecap="round" strokeLinejoin="round" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                                          <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                      </svg>
                                  </div>
-                                 <p className="text-lg">Awaiting Generation...</p>
-                                 <p className="text-sm">Your animated SVG will appear here.</p>
+                                 <h2 className="text-xl font-medium">Awaiting Prompt</h2>
+                                 <p className="text-sm max-w-sm mx-auto">Tell Muse what kind of animation you want to generate in the chat box to your left.</p>
                              </div>
                          )}
                     </div>
