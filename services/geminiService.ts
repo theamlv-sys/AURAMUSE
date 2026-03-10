@@ -630,7 +630,6 @@ export const generateSVG = async (prompt: string, isPromotional: boolean = false
     const response = await callGeminiProxy(modelId, contents, {
       temperature: 0.7,
       topP: 0.95,
-      tools: [{ googleSearch: {} }],
     });
 
     const text = response.candidates?.[0]?.content?.parts?.[0]?.text || '';
