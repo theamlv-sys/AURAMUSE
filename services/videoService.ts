@@ -33,9 +33,28 @@ export async function convertSVGToMP4(svgCode: string, duration: number, onProgr
   if (!ctx) throw new Error('Could not get canvas context');
 
   // 2. Parse and Sanitize SVG
+  // Clean common AI XML errors: unescaped ampersands
+  let cleanSvgCode = svgCode.replace(/&(?!#?[a-zA-Z0-9]+;)/g, '&amp;');
+
   const parser = new DOMParser();
-  const doc = parser.parseFromString(svgCode, 'image/svg+xml');
+  let doc = parser.parseFromString(cleanSvgCode, 'image/svg+xml');
+  
+  // If strict XML parsing fails, fallback to HTML parsing which auto-repairs structure
+  if (doc.querySelector('parsererror')) {
+      const htmlDoc = parser.parseFromString(cleanSvgCode, 'text/html');
+      const rescuedSvg = htmlDoc.querySelector('svg');
+      if (rescuedSvg) {
+          // Re-serialize the auto-repaired HTML DOM back into strict XML
+          doc = parser.parseFromString(rescuedSvg.outerHTML, 'image/svg+xml');
+      }
+      
+      if (doc.querySelector('parsererror')) {
+          throw new Error('SVG code contains catastrophic XML syntax errors that cannot be repaired.');
+      }
+  }
+
   const svgEl = doc.querySelector('svg');
+  if (!svgEl) throw new Error('No SVG element found after parsing.');
   
   // CRITICAL: Sanitize SVG for Canvg to prevent CSS selector crashes
   const allElements = doc.querySelectorAll('*');
