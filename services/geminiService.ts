@@ -689,9 +689,12 @@ export const generateSVGChat = async (
 
     const text = response.candidates?.[0]?.content?.parts?.[0]?.text || '';
     
-    // Extract SVG if present
-    const svgMatch = text.match(/<svg[\s\S]*?<\/svg>/i);
-    const svgCode = svgMatch ? svgMatch[0] : undefined;
+    // Extract SVG if present using safe index bounds instead of RegExp which can crash on massive strings
+    const startIndex = text.indexOf('<svg');
+    const endIndex = text.lastIndexOf('</svg>');
+    const svgCode = (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) 
+        ? text.substring(startIndex, endIndex + 6) 
+        : undefined;
 
     return { text, svgCode };
   } catch (error) {

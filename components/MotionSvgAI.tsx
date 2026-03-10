@@ -184,7 +184,24 @@ const MotionSvgAI: React.FC<MotionSvgAIProps> = ({ onBack, theme, userTier }) =>
                                         {msg.role === 'model' && msg.content === '' && msg.svgCode ? (
                                             <span className="italic opacity-80">Generated a new SVG iteration.</span>
                                         ) : (
-                                            msg.content.replace(/```html[\s\S]*?```/g, '\n[SVG Generated in Preview]\n')
+                                            (() => {
+                                                const text = msg.content;
+                                                const start = text.indexOf('<svg');
+                                                const end = text.lastIndexOf('</svg>');
+                                                if (start !== -1 && end !== -1 && end > start) {
+                                                    let before = text.substring(0, start);
+                                                    let after = text.substring(end + 6);
+                                                    
+                                                    const openBlock = before.lastIndexOf('```');
+                                                    if (openBlock !== -1) before = before.substring(0, openBlock);
+                                                    
+                                                    const closeBlock = after.indexOf('```');
+                                                    if (closeBlock !== -1) after = after.substring(closeBlock + 3);
+                                                    
+                                                    return before.trim() + '\n\n[✨ SVG Animation Generated in Viewer]\n\n' + after.trim();
+                                                }
+                                                return text;
+                                            })()
                                         )}
                                     </div>
                                 </div>
