@@ -360,6 +360,14 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
               isSidebarOpen={isSidebarOpen}
               theme={theme}
             />
+            <SidebarItem
+              icon={<VideoIcon />}
+              label="MotionSVG AI"
+              active={view === 'MOTION_SVG'}
+              onClick={() => onNavigate('MOTION_SVG')}
+              isSidebarOpen={isSidebarOpen}
+              theme={theme}
+            />
           </div>
 
           {/* Bottom Actions */}

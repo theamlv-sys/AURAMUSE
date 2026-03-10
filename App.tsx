@@ -15,6 +15,7 @@ import NotesMode from './components/NotesMode';
 import CalendarMode from './components/CalendarMode';
 import EmailStudio from './components/EmailStudio';
 import { CreativeSuite } from './components/CreativeSuite';
+import MotionSvgAI from './components/MotionSvgAI';
 import YouTubeTools from './components/YouTubeTools';
 import SocialTools from './components/SocialTools';
 import { ProjectType, Asset, TTSState, VoiceName, StoryBibleEntry, VersionSnapshot, SubscriptionTier, UsageStats, TIERS, SavedProject, ViewMode } from './types';
@@ -319,7 +320,7 @@ const App: React.FC = () => {
     };
 
     // Helper: check if current project type is a Domo Suite type
-    const isDomoSuiteType = projectType === ProjectType.PODCAST || projectType === ProjectType.NEWSLETTER || projectType === ProjectType.SLIDES || projectType === ProjectType.MOTION_SVG;
+    const isDomoSuiteType = projectType === ProjectType.PODCAST || projectType === ProjectType.NEWSLETTER || projectType === ProjectType.SLIDES;
 
     // Helper: premium tier check — Auteur & Showrunner only
     const isPremiumTier = userTier === 'AUTEUR' || userTier === 'SHOWRUNNER';
@@ -545,6 +546,14 @@ const App: React.FC = () => {
         />;
     }
 
+    if (viewMode === 'MOTION_SVG') {
+        return <MotionSvgAI
+            onBack={() => setViewMode('HOME')}
+            theme={theme}
+            userTier={userTier}
+        />;
+    }
+
     // CREATIVE_SUITE is now routed through EDITOR view — no standalone block needed
 
     if (viewMode !== 'EDITOR') {
@@ -626,7 +635,6 @@ const App: React.FC = () => {
                             <NavButton active={projectType === ProjectType.PODCAST} onClick={() => handleProjectSelect(ProjectType.PODCAST)} icon="podcast" tooltip="Podcast Studio" />
                             <NavButton active={projectType === ProjectType.NEWSLETTER} onClick={() => handleProjectSelect(ProjectType.NEWSLETTER)} icon="newsletter" tooltip="Newsletter Gen" />
                             <NavButton active={projectType === ProjectType.SLIDES} onClick={() => handleProjectSelect(ProjectType.SLIDES)} icon="slides" tooltip="Slide Deck AI" />
-                            <NavButton active={projectType === ProjectType.MOTION_SVG} onClick={() => handleProjectSelect(ProjectType.MOTION_SVG)} icon="video" tooltip="MotionSVG AI" />
                             <NavButton active={projectType === ProjectType.YOUTUBE} onClick={() => handleProjectSelect(ProjectType.YOUTUBE)} icon="youtube" tooltip="YouTube Script" />
                             <NavButton active={projectType === ProjectType.SOCIAL_MEDIA} onClick={() => handleProjectSelect(ProjectType.SOCIAL_MEDIA)} icon="social" tooltip="Social Media" />
                         </div>

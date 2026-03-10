@@ -1,8 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ProjectType } from '../types';
 import { generatePodcastScript, generateNewsletterContent, generateSlideContent, generateStoryboardImage } from '../services/geminiService';
-import { generateSVG } from '../services/gemini';
-import { convertSVGToMP4 } from '../services/videoService';
 import { googleDriveService } from '../services/googleDriveService';
 import { supabase } from '../services/supabaseClient';
 // @ts-ignore
@@ -69,14 +67,6 @@ export const CreativeSuite: React.FC<CreativeSuiteProps> = ({
     const [slLoading, setSlLoading] = useState(false);
     const [generatingBgIndex, setGeneratingBgIndex] = useState<number | null>(null);
 
-    // MotionSVG AI Local State
-    const [motionSvgPrompt, setMotionSvgPrompt] = useState('');
-    const [motionSvgIsPromotional, setMotionSvgIsPromotional] = useState(false);
-    const [motionSvgCode, setMotionSvgCode] = useState('');
-    const [motionSvgLoading, setMotionSvgLoading] = useState(false);
-    const [motionSvgExporting, setMotionSvgExporting] = useState(false);
-    const [motionSvgExportProgress, setMotionSvgExportProgress] = useState(0);
-
     const nlPreviewRef = useRef<HTMLDivElement>(null);
     const isDark = theme === 'dark';
 
@@ -90,7 +80,6 @@ export const CreativeSuite: React.FC<CreativeSuiteProps> = ({
     const activeTool = projectType === ProjectType.PODCAST ? 'podcast' :
         projectType === ProjectType.NEWSLETTER ? 'newsletter' :
             projectType === ProjectType.SLIDES ? 'slides' :
-                projectType === ProjectType.MOTION_SVG ? 'motion_svg' :
                     projectType === ProjectType.YOUTUBE ? 'youtube' :
                         projectType === ProjectType.SOCIAL_MEDIA ? 'social' : null;
 
@@ -152,50 +141,6 @@ export const CreativeSuite: React.FC<CreativeSuiteProps> = ({
             setSlImages({ ...slImages, [index]: imageUrl });
         } catch (e) { console.error('Slide image error', e); }
         setGeneratingBgIndex(null);
-    };
-
-    // --- MOTION SVG HANDLERS ---
-    const handleGenerateMotionSvg = async () => {
-        setMotionSvgLoading(true);
-        try {
-            const svg = await generateSVG(motionSvgPrompt, motionSvgIsPromotional);
-            setMotionSvgCode(svg);
-            onSendToEditor(`\`\`\`html\n${svg}\n\`\`\``);
-        } catch (e) { console.error(e); alert('Failed to generate SVG.'); }
-        setMotionSvgLoading(false);
-    };
-
-    const handleExportMotionSvg = async () => {
-        if (!motionSvgCode) return;
-        setMotionSvgExporting(true);
-        setMotionSvgExportProgress(0);
-        try {
-            const duration = motionSvgIsPromotional ? 30 : 15;
-            const videoBlob = await convertSVGToMP4(motionSvgCode, duration, (progress) => {
-                setMotionSvgExportProgress(progress);
-            });
-            
-            const extension = videoBlob.type === 'video/mp4' ? 'mp4' : 'webm';
-            const url = URL.createObjectURL(videoBlob);
-            
-            const a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = url;
-            a.download = `motion-video-${Date.now()}.${extension}`;
-            document.body.appendChild(a);
-            a.click();
-            
-            setTimeout(() => {
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-            }, 1000);
-
-        } catch (error) {
-            console.error('Export failed:', error);
-            alert('Failed to export video.');
-        }
-        setMotionSvgExporting(false);
-        setMotionSvgExportProgress(0);
     };
 
     // --- EXPORT HANDLERS ---
@@ -306,7 +251,6 @@ export const CreativeSuite: React.FC<CreativeSuiteProps> = ({
                 {activeTool === 'podcast' && '🎙️ Podcast Studio'}
                 {activeTool === 'newsletter' && '📧 Newsletter Gen'}
                 {activeTool === 'slides' && '📊 Slide Deck AI'}
-                {activeTool === 'motion_svg' && '🪄 MotionSVG AI'}
                 {activeTool === 'youtube' && '🎥 YouTube Script'}
                 {activeTool === 'social' && '📱 Social Media'}
             </h2>
@@ -314,7 +258,6 @@ export const CreativeSuite: React.FC<CreativeSuiteProps> = ({
                 {activeTool === 'podcast' && 'Turn your ideas into a fully scripted audio show.'}
                 {activeTool === 'newsletter' && 'Draft engaging newsletters in seconds.'}
                 {activeTool === 'slides' && 'Create professional slide decks and visuals.'}
-                {activeTool === 'motion_svg' && 'Generate animated vector graphics & MP4s.'}
                 {activeTool === 'youtube' && 'Plan and script your next viral video.'}
                 {activeTool === 'social' && 'Create content for all your social platforms.'}
             </p>
@@ -468,44 +411,6 @@ export const CreativeSuite: React.FC<CreativeSuiteProps> = ({
                         </div>
                     )}
                 </>
-            )}
-
-            {/* === MOTIONSVG AI PANEL === */}
-            {activeTool === 'motion_svg' && (
-                <div className="space-y-4">
-                    <div>
-                        <label className={`text-xs font-medium ${labelColor}`}>Prompt</label>
-                        <textarea value={motionSvgPrompt} onChange={e => setMotionSvgPrompt(e.target.value)} rows={3} placeholder="e.g., A futuristic glowing orb bouncing in a cyberpunk city..." className={`mt-0.5 w-full rounded-lg px-3 py-2 border text-sm ${inputBg} focus:ring-2 focus:ring-amber-500 outline-none resize-none`} />
-                    </div>
-                    <div>
-                        <label className={`text-xs font-medium ${labelColor}`}>Video Type & Duration</label>
-                        <select value={motionSvgIsPromotional ? 'true' : 'false'} onChange={e => setMotionSvgIsPromotional(e.target.value === 'true')} className={`mt-0.5 w-full rounded-md px-2 py-1.5 border text-xs ${inputBg}`}>
-                            <option value="false">Standard Loop (15-30s)</option>
-                            <option value="true">Promotional Sequence (30-60s)</option>
-                        </select>
-                    </div>
-                    
-                    <GenButton onClick={handleGenerateMotionSvg} loading={motionSvgLoading} disabled={!motionSvgPrompt.trim()} label="Generate Vector Animation" loadingLabel="Designing..." />
-                    
-                    {motionSvgCode && (
-                        <div className="mt-4 space-y-3 pt-4 border-t border-gray-200 dark:border-gray-700">
-                            <label className={`text-xs font-medium ${labelColor}`}>Live DOM Preview</label>
-                            <div className="w-full aspect-video bg-black/5 rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 relative" dangerouslySetInnerHTML={{ __html: motionSvgCode }} />
-                            
-                            <button
-                                onClick={handleExportMotionSvg}
-                                disabled={motionSvgExporting}
-                                className={`w-full py-2.5 rounded-lg flex items-center justify-center gap-2 font-medium text-white transition-all shadow-md active:scale-[0.98] ${motionSvgExporting ? 'bg-gray-400 cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700'}`}
-                            >
-                                {motionSvgExporting ? (
-                                    <><div className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin" /> Exporting: {Math.round(motionSvgExportProgress * 100)}%</>
-                                ) : (
-                                    <>🎥 Export MP4 Video</>
-                                )}
-                            </button>
-                        </div>
-                    )}
-                </div>
             )}
 
             {/* === YOUTUBE PANEL === */}

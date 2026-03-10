@@ -254,4 +254,4 @@ export interface SavedProject {
     previewSnippet: string;
 }
 
-export type ViewMode = 'HOME' | 'EDITOR' | 'SETTINGS' | 'LEGAL_PRIVACY' | 'LEGAL_TERMS' | 'NOTES' | 'CALENDAR' | 'CREATIVE_SUITE';
+export type ViewMode = 'HOME' | 'EDITOR' | 'SETTINGS' | 'LEGAL_PRIVACY' | 'LEGAL_TERMS' | 'NOTES' | 'CALENDAR' | 'CREATIVE_SUITE' | 'MOTION_SVG';
