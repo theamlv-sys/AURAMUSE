@@ -34,18 +34,29 @@ export class GeminiService {
       config: {
         temperature: 0.7,
         topP: 0.95,
-        tools: [{ googleSearch: {} }],
       }
     });
 
-    const text = response.text || '';
-    const svgMatch = text.match(/<svg[\s\S]*?<\/svg>/i);
-    
+    let fullText = '';
+    const parts = response.candidates?.[0]?.content?.parts || [];
+    parts.forEach((part: any) => {
+      // Gemini 3.1 Pro includes thought blocks and actual text blocks.
+      if (part.text && !part.thought && !part.executableCode && !part.codeExecutionResult) {
+          fullText += part.text;
+      }
+    });
+
+    // Fallback if fullText is empty (e.g., structure was unexpected)
+    if (!fullText) {
+        fullText = response.text || '';
+    }
+
+    const svgMatch = fullText.match(/<svg[\s\S]*?<\/svg>/i);
     // Extract grounding metadata if available
     const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks?.map(chunk => chunk.web?.uri).filter(Boolean);
     
     return {
-      code: svgMatch ? svgMatch[0] : text,
+      code: svgMatch ? svgMatch[0] : fullText,
       sources: sources || []
     };
   }
@@ -71,9 +82,20 @@ export class GeminiService {
       }
     });
 
-    const text = response.text || '';
-    const svgMatch = text.match(/<svg[\s\S]*?<\/svg>/i);
-    return svgMatch ? svgMatch[0] : text;
+    let fullText = '';
+    const parts = response.candidates?.[0]?.content?.parts || [];
+    parts.forEach((part: any) => {
+      if (part.text && !part.thought && !part.executableCode && !part.codeExecutionResult) {
+          fullText += part.text;
+      }
+    });
+
+    if (!fullText) {
+        fullText = response.text || '';
+    }
+
+    const svgMatch = fullText.match(/<svg[\s\S]*?<\/svg>/i);
+    return svgMatch ? svgMatch[0] : fullText;
   }
 
   // Live API Session
