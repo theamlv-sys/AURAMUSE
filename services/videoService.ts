@@ -59,11 +59,32 @@ export async function convertSVGToMP4(svgCode: string, duration: number, onProgr
 
   // 3. Setup Canvg & RecordRTC
   const v = await Canvg.from(ctx, sanitizedSvgCode);
-  const stream = (canvas as any).captureStream(30); // 30 FPS
   
+  // Safely get captureStream for different browsers
+  const stream = typeof (canvas as any).captureStream === 'function' 
+      ? (canvas as any).captureStream(30) 
+      : typeof (canvas as any).mozCaptureStream === 'function' 
+        ? (canvas as any).mozCaptureStream(30)
+        : null;
+
+  if (!stream) {
+      document.body.removeChild(canvas);
+      throw new Error('Your browser does not support capturing video from a canvas. Please use Chrome, Edge, or Firefox.');
+  }
+
+  // Determine optimal recording format (Safari supports video/mp4 natively)
+  let mimeType = 'video/webm';
+  let isNativeMp4 = false;
+
+  // Check if MediaRecorder is available and supports mp4 (usually Safari)
+  if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported('video/mp4')) {
+      mimeType = 'video/mp4';
+      isNativeMp4 = true;
+  }
+
   const recorder = new RecordRTC(stream, {
     type: 'video',
-    mimeType: 'video/webm', // Record in WebM first
+    mimeType: mimeType as 'video/mp4' | 'video/webm', // Use native MP4 if possible, otherwise WebM
     bitsPerSecond: 12800000, // 12.8 Mbps high quality
   });
 
@@ -82,8 +103,14 @@ export async function convertSVGToMP4(svgCode: string, duration: number, onProgr
   // 5. Stop Recording
   v.stop();
   await new Promise<void>(resolve => recorder.stopRecording(() => resolve()));
-  const webmBlob = recorder.getBlob();
+  const recordedBlob = recorder.getBlob();
   document.body.removeChild(canvas);
+
+  // If we natively recorded in MP4, we can skip FFmpeg!
+  if (isNativeMp4) {
+      if (onProgress) onProgress(1.0);
+      return new Blob([recordedBlob], { type: 'video/mp4' });
+  }
 
   // 6. Convert WebM to MP4 using FFmpeg
   try {
@@ -91,7 +118,7 @@ export async function convertSVGToMP4(svgCode: string, duration: number, onProgr
     const inputName = 'input.webm';
     const outputName = 'output.mp4';
     
-    await ffmpegInstance.writeFile(inputName, await fetchFile(webmBlob));
+    await ffmpegInstance.writeFile(inputName, await fetchFile(recordedBlob));
     
     // CRITICAL: scale=trunc(iw/2)*2:trunc(ih/2)*2 ensures dimensions are even numbers (required by libx264)
     await ffmpegInstance.exec([
@@ -114,7 +141,8 @@ export async function convertSVGToMP4(svgCode: string, duration: number, onProgr
     if (onProgress) onProgress(1.0);
     return mp4Blob;
   } catch (error) {
-    // Fallback to WebM if browser doesn't support FFmpeg.wasm (SharedArrayBuffer issues)
-    return webmBlob; 
+    console.error('Video conversion failed:', error);
+    // Explicit throw helps the user realize WebM fallback was bypassed and MP4 export is truly failing.
+    throw new Error('Failed to transcode video to MP4 format using FFmpeg.');
   }
 }

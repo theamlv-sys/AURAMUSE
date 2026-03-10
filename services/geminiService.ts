@@ -640,31 +640,38 @@ export const generateSVG = async (prompt: string, isPromotional: boolean = false
 
 export const generateSVGChat = async (
   history: { role: 'user' | 'model', content: string }[],
-  useProModel: boolean = false
+  useProModel: boolean = false,
+  forceGenerate: boolean = false,
+  isPromotional: boolean = false
 ): Promise<{ text: string, svgCode?: string }> => {
   const modelId = useProModel ? 'gemini-3.1-pro-preview' : 'gemini-2.5-pro';
 
+  const duration = isPromotional ? "30 to 60 seconds" : "15 to 30 seconds";
+  const complexity = isPromotional ? "multi-stage promotional sequence with cinematic transitions, text overlays, and professional motion curves" : "professional high-end motion graphics loop";
+
   const systemPrompt = `You are Muse, a world-class Motion Graphics Designer and SVG Expert. 
-    Your task is to chat with the user to iteratively create and refine a professional, high-end animated SVG.
+    Your task is to chat with the user to iteratively brainstorm, plan, and refine a professional, high-end animated SVG.
     
-    Technical Requirements for the SVG:
-    1. Include sophisticated CSS animations within a <style> tag. Use cubic-bezier timing functions for natural motion.
-    2. Aesthetics: Use modern design trends—glassmorphism, mesh gradients, dynamic shadows, fluid organic paths, and high-end typography.
-    3. Responsiveness: Use viewBox and width/height="100%".
-    4. Structure: Use groups (<g>) to organize scenes. Use unique, descriptive IDs for all elements.
-    5. Animation: Implement a multi-scene structure where elements transition in and out. Use opacity, transform (scale, rotate, translate), and filter (blur) animations.
-    6. Quality: The result must look like it was made in After Effects or Figma, but implemented entirely in SVG/CSS.
+    Technical Requirements for the SVG (when asked to generate):
+    1. Duration: ${duration}. Complexity: ${complexity}.
+    2. Include sophisticated CSS animations within a <style> tag. Use cubic-bezier timing functions for natural motion.
+    3. Aesthetics: Use modern design trends—glassmorphism, mesh gradients, dynamic shadows, fluid organic paths, and high-end typography.
+    4. Responsiveness: Use viewBox and width/height="100%".
+    5. Structure: Use groups (<g>) to organize scenes. Use unique, descriptive IDs for all elements.
+    6. Animation: Implement a multi-scene structure where elements transition in and out. Use opacity, transform (scale, rotate, translate), and filter (blur) animations.
+    7. Quality: The result must look like it was made in After Effects or Figma, but implemented entirely in SVG/CSS.
     
-    Converse naturally with the user. Answer their questions, provide advice, and if requested, generate or update the SVG.
+    Converse naturally with the user. Answer their questions and provide advice.
+    ONLY generate or update the SVG if the user explicitly asks for it in the current prompt, or you receive a MUSE INSTRUCTION to do so.
     When generating or updating the SVG, you MUST output the full raw SVG code enclosed within \`\`\`html and \`\`\` tags so it can be parsed. Do NOT output partial SVGs.`;
 
   try {
     const historyParts = history.map((msg, idx) => {
-      // If it's the last message (current user prompt), add context instruction
-      if (idx === history.length - 1 && msg.role === 'user') {
+      // If it's the last message and forceGenerate is true, inject the instruction
+      if (idx === history.length - 1 && msg.role === 'user' && forceGenerate) {
         return {
           role: 'user',
-          parts: [{ text: `${msg.content}\n\n[MUSE INSTRUCTION: If I am asking you to change or generate the video, please provide the full updated SVG code inside \`\`\`html \`\`\` blocks.]` }]
+          parts: [{ text: `${msg.content}\n\n[MUSE INSTRUCTION: Please generate the full updated SVG code inside \`\`\`html \`\`\` blocks based on our conversation now.]` }]
         }
       }
       return {
