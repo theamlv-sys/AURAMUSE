@@ -11,6 +11,7 @@ interface MotionSvgAIProps {
 interface Message {
     role: 'user' | 'model';
     content: string;
+    svgCode?: string;
 }
 
 const MotionSvgAI: React.FC<MotionSvgAIProps> = ({ onBack, theme, userTier }) => {
@@ -25,14 +26,11 @@ const MotionSvgAI: React.FC<MotionSvgAIProps> = ({ onBack, theme, userTier }) =>
     const isShowrunner = userTier === 'SHOWRUNNER';
 
     const [messages, setMessages] = useState<Message[]>([
-        { role: 'model', content: "Hello! I'm Muse, your Motion Graphics Assistant. Let's brainstorm your animation. Once we agree on an idea, pick a mode below and click 'Generate Video' to see it come to life!" }
+        { role: 'model', content: "Hello! I'm Muse, your Motion Graphics Assistant. Describe the animation or UI component you want to create, and I'll generate the SVG for you. We can iterate on it together!" }
     ]);
     const [inputText, setInputText] = useState('');
     const [useProModel, setUseProModel] = useState(false);
-    const [isPromotional, setIsPromotional] = useState(false);
-    const [isLoading, setIsLoading] = useState(false); // For Chat
-    const [isGenerating, setIsGenerating] = useState(false); // For Video
-    const [latestSvgCode, setLatestSvgCode] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
     const [motionSvgExporting, setMotionSvgExporting] = useState(false);
     const [motionSvgExportProgress, setMotionSvgExportProgress] = useState(0);
 
@@ -47,57 +45,29 @@ const MotionSvgAI: React.FC<MotionSvgAIProps> = ({ onBack, theme, userTier }) =>
     }, [messages, isLoading]);
 
     const handleSendMessage = async () => {
-        if (!inputText.trim() || isLoading || isGenerating) return;
+        if (!inputText.trim() || isLoading) return;
 
-        let newMessages = [...messages];
-        newMessages.push({ role: 'user', content: inputText.trim() });
-        setInputText('');
+        const newMessages: Message[] = [...messages, { role: 'user', content: inputText.trim() }];
         setMessages(newMessages);
+        setInputText('');
         setIsLoading(true);
 
         try {
+            // Keep only the context we need for the API, limit to recent history if necessary (but full history is better for iteration)
             const historyForApi = newMessages.map(m => ({ role: m.role, content: m.content }));
             
-            // forceGenerate=false for pure chat
-            const response = await generateSVGChat(historyForApi, useProModel, false, isPromotional);
+            const response = await generateSVGChat(historyForApi, useProModel);
             
             setMessages(prev => [...prev, {
                 role: 'model',
-                content: response.text
+                content: response.text,
+                svgCode: response.svgCode
             }]);
-            
-            // If Muse unexpectedly gives us SVG in pure chat, keep it just in case
-            if (response.svgCode) {
-                setLatestSvgCode(response.svgCode);
-            }
         } catch (e) {
             console.error(e);
             setMessages(prev => [...prev, { role: 'model', content: "I encountered an error while trying to process that request." }]);
         } finally {
             setIsLoading(false);
-        }
-    };
-
-    const handleGenerateVideo = async () => {
-        if (isGenerating || messages.length === 1) return;
-        setIsGenerating(true);
-
-        try {
-            const historyForApi = messages.map(m => ({ role: m.role, content: m.content }));
-            
-            // forceGenerate=true triggers the silent SVG build
-            const response = await generateSVGChat(historyForApi, useProModel, true, isPromotional);
-            
-            if (response.svgCode) {
-                setLatestSvgCode(response.svgCode);
-            } else {
-                alert("Muse couldn't process the graphic. Try typing more details in the chat!");
-            }
-        } catch (e) {
-            console.error(e);
-            alert("Error generating video graphic. Please try again.");
-        } finally {
-            setIsGenerating(false);
         }
     };
 
@@ -107,6 +77,9 @@ const MotionSvgAI: React.FC<MotionSvgAIProps> = ({ onBack, theme, userTier }) =>
             handleSendMessage();
         }
     };
+
+    // Find the latest SVG code to display in the preview
+    const latestSvgCode = [...messages].reverse().find(m => m.svgCode)?.svgCode;
 
     const handleExportMotionSvg = async () => {
         if (!latestSvgCode) return;
@@ -204,24 +177,7 @@ const MotionSvgAI: React.FC<MotionSvgAIProps> = ({ onBack, theme, userTier }) =>
                                         {msg.role === 'model' && msg.content === '' && msg.svgCode ? (
                                             <span className="italic opacity-80">Generated a new SVG iteration.</span>
                                         ) : (
-                                            (() => {
-                                                const text = msg.content;
-                                                const start = text.indexOf('<svg');
-                                                const end = text.lastIndexOf('</svg>');
-                                                if (start !== -1 && end !== -1 && end > start) {
-                                                    let before = text.substring(0, start);
-                                                    let after = text.substring(end + 6);
-                                                    
-                                                    const openBlock = before.lastIndexOf('```');
-                                                    if (openBlock !== -1) before = before.substring(0, openBlock);
-                                                    
-                                                    const closeBlock = after.indexOf('```');
-                                                    if (closeBlock !== -1) after = after.substring(closeBlock + 3);
-                                                    
-                                                    return before.trim() + '\n\n[✨ SVG Animation Generated in Viewer]\n\n' + after.trim();
-                                                }
-                                                return text;
-                                            })()
+                                            msg.content.replace(/```html[\s\S]*?```/g, '\n[SVG Generated in Preview]\n')
                                         )}
                                     </div>
                                 </div>
@@ -243,48 +199,22 @@ const MotionSvgAI: React.FC<MotionSvgAIProps> = ({ onBack, theme, userTier }) =>
 
                     {/* Chat Input */}
                     <div className={`p-4 border-t ${borderColor} ${bgColor}`}>
-                        
-                        {/* Generation Controls */}
-                        <div className="flex items-center gap-2 mb-3">
-                            <select 
-                                value={isPromotional ? 'promotional' : 'standard'}
-                                onChange={(e) => setIsPromotional(e.target.value === 'promotional')}
-                                className={`flex-1 rounded-xl px-3 py-2.5 border text-sm font-medium ${inputBg} shadow-inner cursor-pointer outline-none transition-all focus:ring-2 focus:ring-muse-500/50`}
-                            >
-                                <option value="standard">Standard Animation</option>
-                                <option value="promotional">60s Promotional</option>
-                            </select>
-                            <button
-                                onClick={handleGenerateVideo}
-                                disabled={isGenerating || messages.length === 1}
-                                className={`px-5 py-2.5 rounded-xl text-sm font-bold text-white transition-all shadow-md active:scale-[0.98] flex items-center gap-2 ${isGenerating || messages.length === 1 ? 'bg-muse-400 cursor-not-allowed' : 'bg-gradient-to-r from-muse-600 to-indigo-600 hover:from-muse-500 hover:to-indigo-500 hover:shadow-indigo-500/20'}`}
-                            >
-                                {isGenerating ? (
-                                    <><div className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin" /> Generating...</>
-                                ) : latestSvgCode ? (
-                                    <>🪄 Edit Video</>
-                                ) : (
-                                    <>✨ Generate Video</>
-                                )}
-                            </button>
-                        </div>
-
                         <div className={`flex items-end gap-2 rounded-2xl border ${borderColor} ${inputBg} p-2 shadow-inner focus-within:ring-2 focus-within:ring-muse-500/50 transition-all`}>
                             <textarea
                                 value={inputText}
                                 onChange={e => setInputText(e.target.value)}
                                 onKeyDown={handleKeyDown}
-                                placeholder="Chat with Muse to plan or iterate..."
+                                placeholder="Message Muse to generate or edit..."
                                 className="w-full max-h-32 min-h-[44px] bg-transparent resize-none outline-none text-sm px-2 py-3"
                                 rows={1}
                             />
                             <button
-                                onClick={() => handleSendMessage()}
+                                onClick={handleSendMessage}
                                 disabled={!inputText.trim() || isLoading}
                                 className={`p-2.5 rounded-xl shrink-0 transition-all ${
                                     !inputText.trim() || isLoading 
                                     ? 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed' 
-                                    : 'bg-gray-800 dark:bg-gray-200 text-white dark:text-gray-900 shadow-md active:scale-95'
+                                    : 'bg-muse-600 hover:bg-muse-500 text-white shadow-md active:scale-95'
                                 }`}
                             >
                                 <svg className="w-5 h-5 translate-x-0.5 -translate-y-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -293,7 +223,7 @@ const MotionSvgAI: React.FC<MotionSvgAIProps> = ({ onBack, theme, userTier }) =>
                             </button>
                         </div>
                         <p className={`text-center text-[10px] mt-2 ${subTextColor}`}>
-                            Press Enter to chat, Shift+Enter for new line. Click Generate Video to apply changes.
+                            Press Enter to send, Shift + Enter for new line
                         </p>
                     </div>
                 </div>

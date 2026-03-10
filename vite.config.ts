@@ -8,16 +8,6 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3005,
       host: '0.0.0.0',
-      headers: {
-        'Cross-Origin-Opener-Policy': 'same-origin',
-        'Cross-Origin-Embedder-Policy': 'require-corp',
-      },
-    },
-    preview: {
-      headers: {
-        'Cross-Origin-Opener-Policy': 'same-origin',
-        'Cross-Origin-Embedder-Policy': 'require-corp',
-      },
     },
     plugins: [react()],
     define: {
