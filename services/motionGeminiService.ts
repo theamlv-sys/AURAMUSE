@@ -1,21 +1,18 @@
 import { GoogleGenAI, Modality } from "@google/genai";
+import { callGeminiProxy } from './geminiService';
 
 export class GeminiService {
   private ai: GoogleGenAI;
 
   constructor() {
-    this.ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' });
+    this.ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GOOGLE_GENAI_API_KEY || '' });
   }
 
   async generateSVG(prompt: string, isPromotional: boolean = false) {
-    const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' });
-    
     const duration = isPromotional ? "30 to 60 seconds" : "15 to 30 seconds";
     const complexity = isPromotional ? "multi-stage promotional sequence with cinematic transitions, text overlays, and professional motion curves" : "professional high-end motion graphics loop";
 
-    const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
-      contents: `You are a world-class Motion Graphics Designer and SVG Expert. 
+    const systemInstruction = `You are a world-class Motion Graphics Designer and SVG Expert. 
       
       Task: Create a professional, high-end animated SVG for the following request: "${prompt}". 
       
@@ -30,12 +27,16 @@ export class GeminiService {
       5. Responsiveness: Use viewBox and width/height="100%".
       6. Structure: Use groups (<g>) to organize scenes. Use unique, descriptive IDs for all elements.
       7. Animation: For promotional videos, implement a multi-scene structure where elements transition in and out. Use opacity, transform (scale, rotate, translate), and filter (blur) animations.
-      8. Quality: The result must look like it was made in After Effects or Figma, but implemented entirely in SVG/CSS.`,
-      config: {
+      8. Quality: The result must look like it was made in After Effects or Figma, but implemented entirely in SVG/CSS.`;
+
+    const response = await callGeminiProxy('gemini-3.1-pro-preview', 
+      [{ parts: [{ text: prompt }] }],
+      {
         temperature: 0.7,
         topP: 0.95,
+        systemInstruction: systemInstruction
       }
-    });
+    );
 
     let fullText = '';
     const parts = response.candidates?.[0]?.content?.parts || [];
@@ -62,11 +63,7 @@ export class GeminiService {
   }
 
   async refineSVG(currentSVG: string, editRequest: string) {
-    const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' });
-    
-    const response = await ai.models.generateContent({
-      model: "gemini-3.1-pro-preview",
-      contents: `You are an expert SVG editor. Modify the following SVG code based on this request: "${editRequest}".
+    const systemInstruction = `You are an expert SVG editor. Modify the following SVG code based on this request: "${editRequest}".
       
       Current SVG:
       ${currentSVG}
@@ -75,12 +72,16 @@ export class GeminiService {
       1. Output ONLY the updated raw SVG code.
       2. Maintain the existing animation structure unless specifically asked to change it.
       3. Ensure all IDs and styles remain consistent.
-      4. Do not include any markdown formatting or explanations, just the <svg>...</svg> block.`,
-      config: {
+      4. Do not include any markdown formatting or explanations, just the <svg>...</svg> block.`;
+
+    const response = await callGeminiProxy('gemini-3.1-pro-preview', 
+      [{ parts: [{ text: editRequest }] }],
+      {
         temperature: 0.4,
         topP: 0.95,
+        systemInstruction: systemInstruction
       }
-    });
+    );
 
     let fullText = '';
     const parts = response.candidates?.[0]?.content?.parts || [];
@@ -105,7 +106,7 @@ export class GeminiService {
     onerror?: (error: any) => void;
     onclose?: () => void;
   }) {
-    const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' });
+    const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GOOGLE_GENAI_API_KEY || '' });
     
     // Audio context for playback
     const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });

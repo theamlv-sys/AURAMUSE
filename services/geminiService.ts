@@ -401,7 +401,7 @@ export const generateVideoPromptFromText = async (text: string): Promise<string>
 /**
  * Helper to call the secure Gemini Proxy Supabase Function
  */
-async function callGeminiProxy(model: string, contents: any, config: any = {}): Promise<any> {
+export async function callGeminiProxy(model: string, contents: any, config: any = {}): Promise<any> {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token || import.meta.env.VITE_SUPABASE_ANON_KEY;
   const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/gemini-proxy`;
