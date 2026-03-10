@@ -11,7 +11,6 @@ interface MotionSvgAIProps {
 interface Message {
     role: 'user' | 'model';
     content: string;
-    svgCode?: string;
 }
 
 const MotionSvgAI: React.FC<MotionSvgAIProps> = ({ onBack, theme, userTier }) => {
@@ -31,7 +30,9 @@ const MotionSvgAI: React.FC<MotionSvgAIProps> = ({ onBack, theme, userTier }) =>
     const [inputText, setInputText] = useState('');
     const [useProModel, setUseProModel] = useState(false);
     const [isPromotional, setIsPromotional] = useState(false);
-    const [isLoading, setIsLoading] = useState(false);
+    const [isLoading, setIsLoading] = useState(false); // For Chat
+    const [isGenerating, setIsGenerating] = useState(false); // For Video
+    const [latestSvgCode, setLatestSvgCode] = useState<string | null>(null);
     const [motionSvgExporting, setMotionSvgExporting] = useState(false);
     const [motionSvgExportProgress, setMotionSvgExportProgress] = useState(0);
 
@@ -45,36 +46,58 @@ const MotionSvgAI: React.FC<MotionSvgAIProps> = ({ onBack, theme, userTier }) =>
         scrollToBottom();
     }, [messages, isLoading]);
 
-    const handleSendMessage = async (forceGenerate: boolean = false) => {
-        if (!inputText.trim() && !forceGenerate) return;
-        if (isLoading) return;
+    const handleSendMessage = async () => {
+        if (!inputText.trim() || isLoading || isGenerating) return;
 
         let newMessages = [...messages];
-        if (inputText.trim()) {
-            newMessages.push({ role: 'user', content: inputText.trim() });
-            setInputText('');
-        } else if (forceGenerate) {
-            newMessages.push({ role: 'user', content: `Please ${messages.length > 1 ? 'update the' : 'generate a'} video graphic based on my selection.` });
-        }
-        
+        newMessages.push({ role: 'user', content: inputText.trim() });
+        setInputText('');
         setMessages(newMessages);
         setIsLoading(true);
 
         try {
             const historyForApi = newMessages.map(m => ({ role: m.role, content: m.content }));
             
-            const response = await generateSVGChat(historyForApi, useProModel, forceGenerate, isPromotional);
+            // forceGenerate=false for pure chat
+            const response = await generateSVGChat(historyForApi, useProModel, false, isPromotional);
             
             setMessages(prev => [...prev, {
                 role: 'model',
-                content: response.text,
-                svgCode: response.svgCode
+                content: response.text
             }]);
+            
+            // If Muse unexpectedly gives us SVG in pure chat, keep it just in case
+            if (response.svgCode) {
+                setLatestSvgCode(response.svgCode);
+            }
         } catch (e) {
             console.error(e);
             setMessages(prev => [...prev, { role: 'model', content: "I encountered an error while trying to process that request." }]);
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleGenerateVideo = async () => {
+        if (isGenerating || messages.length === 1) return;
+        setIsGenerating(true);
+
+        try {
+            const historyForApi = messages.map(m => ({ role: m.role, content: m.content }));
+            
+            // forceGenerate=true triggers the silent SVG build
+            const response = await generateSVGChat(historyForApi, useProModel, true, isPromotional);
+            
+            if (response.svgCode) {
+                setLatestSvgCode(response.svgCode);
+            } else {
+                alert("Muse couldn't process the graphic. Try typing more details in the chat!");
+            }
+        } catch (e) {
+            console.error(e);
+            alert("Error generating video graphic. Please try again.");
+        } finally {
+            setIsGenerating(false);
         }
     };
 
@@ -84,9 +107,6 @@ const MotionSvgAI: React.FC<MotionSvgAIProps> = ({ onBack, theme, userTier }) =>
             handleSendMessage();
         }
     };
-
-    // Find the latest SVG code to display in the preview
-    const latestSvgCode = [...messages].reverse().find(m => m.svgCode)?.svgCode;
 
     const handleExportMotionSvg = async () => {
         if (!latestSvgCode) return;
@@ -235,11 +255,11 @@ const MotionSvgAI: React.FC<MotionSvgAIProps> = ({ onBack, theme, userTier }) =>
                                 <option value="promotional">60s Promotional</option>
                             </select>
                             <button
-                                onClick={() => handleSendMessage(true)}
-                                disabled={isLoading || messages.length === 1}
-                                className={`px-5 py-2.5 rounded-xl text-sm font-bold text-white transition-all shadow-md active:scale-[0.98] flex items-center gap-2 ${isLoading || messages.length === 1 ? 'bg-muse-400 cursor-not-allowed' : 'bg-gradient-to-r from-muse-600 to-indigo-600 hover:from-muse-500 hover:to-indigo-500 hover:shadow-indigo-500/20'}`}
+                                onClick={handleGenerateVideo}
+                                disabled={isGenerating || messages.length === 1}
+                                className={`px-5 py-2.5 rounded-xl text-sm font-bold text-white transition-all shadow-md active:scale-[0.98] flex items-center gap-2 ${isGenerating || messages.length === 1 ? 'bg-muse-400 cursor-not-allowed' : 'bg-gradient-to-r from-muse-600 to-indigo-600 hover:from-muse-500 hover:to-indigo-500 hover:shadow-indigo-500/20'}`}
                             >
-                                {isLoading ? (
+                                {isGenerating ? (
                                     <><div className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin" /> Generating...</>
                                 ) : latestSvgCode ? (
                                     <>🪄 Edit Video</>
@@ -259,7 +279,7 @@ const MotionSvgAI: React.FC<MotionSvgAIProps> = ({ onBack, theme, userTier }) =>
                                 rows={1}
                             />
                             <button
-                                onClick={() => handleSendMessage(false)}
+                                onClick={() => handleSendMessage()}
                                 disabled={!inputText.trim() || isLoading}
                                 className={`p-2.5 rounded-xl shrink-0 transition-all ${
                                     !inputText.trim() || isLoading 
