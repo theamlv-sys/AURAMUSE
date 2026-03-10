@@ -53,6 +53,8 @@ const MotionSvgAI: React.FC<MotionSvgAIProps> = ({ onBack, theme, userTier }) =>
         if (inputText.trim()) {
             newMessages.push({ role: 'user', content: inputText.trim() });
             setInputText('');
+        } else if (forceGenerate) {
+            newMessages.push({ role: 'user', content: `Please ${messages.length > 1 ? 'update the' : 'generate a'} video graphic based on my selection.` });
         }
         
         setMessages(newMessages);
