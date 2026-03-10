@@ -15,7 +15,8 @@ import NotesMode from './components/NotesMode';
 import CalendarMode from './components/CalendarMode';
 import EmailStudio from './components/EmailStudio';
 import { CreativeSuite } from './components/CreativeSuite';
-import MotionSvgAI from './components/MotionSvgAI';
+import { ApiKeyGuard } from './components/ApiKeyGuard';
+import { VideoStudio } from './components/VideoStudio';
 import YouTubeTools from './components/YouTubeTools';
 import SocialTools from './components/SocialTools';
 import { ProjectType, Asset, TTSState, VoiceName, StoryBibleEntry, VersionSnapshot, SubscriptionTier, UsageStats, TIERS, SavedProject, ViewMode } from './types';
@@ -547,11 +548,23 @@ const App: React.FC = () => {
     }
 
     if (viewMode === 'MOTION_SVG') {
-        return <MotionSvgAI
-            onBack={() => setViewMode('HOME')}
-            theme={theme}
-            userTier={userTier}
-        />;
+        return (
+            <div className="flex-1 relative flex flex-col h-full overflow-hidden bg-gray-900">
+                <div className="absolute top-4 left-4 z-50">
+                    <button
+                        onClick={() => setViewMode('HOME')}
+                        className={`p-2 rounded-lg transition-colors ${theme === 'dark' ? 'bg-black/50 hover:bg-black text-white' : 'bg-white/50 hover:bg-white text-black'}`}
+                    >
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                        </svg>
+                    </button>
+                </div>
+                <ApiKeyGuard>
+                    <VideoStudio />
+                </ApiKeyGuard>
+            </div>
+        );
     }
 
     // CREATIVE_SUITE is now routed through EDITOR view — no standalone block needed

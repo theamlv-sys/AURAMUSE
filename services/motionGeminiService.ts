@@ -1,0 +1,173 @@
+import { GoogleGenAI, Modality } from "@google/genai";
+
+export class GeminiService {
+  private ai: GoogleGenAI;
+
+  constructor() {
+    this.ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' });
+  }
+
+  async generateSVG(prompt: string, isPromotional: boolean = false) {
+    const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' });
+    
+    const duration = isPromotional ? "30 to 60 seconds" : "15 to 30 seconds";
+    const complexity = isPromotional ? "multi-stage promotional sequence with cinematic transitions, text overlays, and professional motion curves" : "professional high-end motion graphics loop";
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3.1-pro-preview",
+      contents: `You are a world-class Motion Graphics Designer and SVG Expert. 
+      
+      Task: Create a professional, high-end animated SVG for the following request: "${prompt}". 
+      
+      Research & Context:
+      Use Google Search to research the topic, brand, or industry mentioned in the prompt to ensure the visual style, colors, and messaging are accurate and professional.
+      
+      Technical Requirements:
+      1. Output ONLY the raw SVG code. No markdown, no explanations.
+      2. Include sophisticated CSS animations within a <style> tag. Use cubic-bezier timing functions for natural motion.
+      3. Duration: ${duration}. Complexity: ${complexity}.
+      4. Aesthetics: Use modern design trends—glassmorphism, mesh gradients, dynamic shadows, fluid organic paths, and high-end typography.
+      5. Responsiveness: Use viewBox and width/height="100%".
+      6. Structure: Use groups (<g>) to organize scenes. Use unique, descriptive IDs for all elements.
+      7. Animation: For promotional videos, implement a multi-scene structure where elements transition in and out. Use opacity, transform (scale, rotate, translate), and filter (blur) animations.
+      8. Quality: The result must look like it was made in After Effects or Figma, but implemented entirely in SVG/CSS.`,
+      config: {
+        temperature: 0.7,
+        topP: 0.95,
+        tools: [{ googleSearch: {} }],
+      }
+    });
+
+    const text = response.text || '';
+    const svgMatch = text.match(/<svg[\s\S]*?<\/svg>/i);
+    
+    // Extract grounding metadata if available
+    const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks?.map(chunk => chunk.web?.uri).filter(Boolean);
+    
+    return {
+      code: svgMatch ? svgMatch[0] : text,
+      sources: sources || []
+    };
+  }
+
+  async refineSVG(currentSVG: string, editRequest: string) {
+    const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' });
+    
+    const response = await ai.models.generateContent({
+      model: "gemini-3.1-pro-preview",
+      contents: `You are an expert SVG editor. Modify the following SVG code based on this request: "${editRequest}".
+      
+      Current SVG:
+      ${currentSVG}
+      
+      Requirements:
+      1. Output ONLY the updated raw SVG code.
+      2. Maintain the existing animation structure unless specifically asked to change it.
+      3. Ensure all IDs and styles remain consistent.
+      4. Do not include any markdown formatting or explanations, just the <svg>...</svg> block.`,
+      config: {
+        temperature: 0.4,
+        topP: 0.95,
+      }
+    });
+
+    const text = response.text || '';
+    const svgMatch = text.match(/<svg[\s\S]*?<\/svg>/i);
+    return svgMatch ? svgMatch[0] : text;
+  }
+
+  // Live API Session
+  async connectLive(callbacks: {
+    onopen?: () => void;
+    onmessage?: (message: any) => void;
+    onerror?: (error: any) => void;
+    onclose?: () => void;
+  }) {
+    const ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GEMINI_API_KEY || '' });
+    
+    // Audio context for playback
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+    let nextStartTime = 0;
+
+    const session = await ai.live.connect({
+      model: "gemini-2.5-flash-native-audio-preview-09-2025",
+      callbacks: {
+        onopen: async () => {
+          callbacks.onopen?.();
+          
+          // Setup microphone
+          try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const audioCtx = new AudioContext({ sampleRate: 16000 });
+            const source = audioCtx.createMediaStreamSource(stream);
+            const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+
+            processor.onaudioprocess = (e) => {
+              const inputData = e.inputBuffer.getChannelData(0);
+              // Convert to PCM 16-bit
+              const pcmData = new Int16Array(inputData.length);
+              for (let i = 0; i < inputData.length; i++) {
+                pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
+              }
+              const base64Data = btoa(String.fromCharCode(...new Uint8Array(pcmData.buffer)));
+              session.sendRealtimeInput({
+                media: { data: base64Data, mimeType: 'audio/pcm;rate=16000' }
+              });
+            };
+
+            source.connect(processor);
+            processor.connect(audioCtx.destination);
+          } catch (err) {
+            console.error('Microphone access denied:', err);
+          }
+        },
+        onmessage: async (message) => {
+          callbacks.onmessage?.(message);
+          
+          // Handle audio output
+          const base64Audio = message.serverContent?.modelTurn?.parts?.[0]?.inlineData?.data;
+          if (base64Audio) {
+            const binaryString = atob(base64Audio);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+            }
+            const pcmData = new Int16Array(bytes.buffer);
+            const floatData = new Float32Array(pcmData.length);
+            for (let i = 0; i < pcmData.length; i++) {
+              floatData[i] = pcmData[i] / 0x7FFF;
+            }
+
+            const buffer = audioContext.createBuffer(1, floatData.length, 24000);
+            buffer.getChannelData(0).set(floatData);
+            const source = audioContext.createBufferSource();
+            source.buffer = buffer;
+            source.connect(audioContext.destination);
+            
+            const startTime = Math.max(nextStartTime, audioContext.currentTime);
+            source.start(startTime);
+            nextStartTime = startTime + buffer.duration;
+          }
+
+          if (message.serverContent?.interrupted) {
+            // Stop playback logic would go here
+            nextStartTime = audioContext.currentTime;
+          }
+        },
+        onerror: callbacks.onerror,
+        onclose: callbacks.onclose,
+      },
+      config: {
+        responseModalities: [Modality.AUDIO],
+        speechConfig: {
+          voiceConfig: { prebuiltVoiceConfig: { voiceName: "Zephyr" } },
+        },
+        systemInstruction: "You are a creative director for SVG motion graphics. Help the user describe a perfect animated SVG. Focus on CSS animations, vector paths, and geometric motion. When ready, summarize the request into a single prompt starting with 'Prompt: '.",
+      },
+    });
+
+    return session;
+  }
+}
+
+export const geminiService = new GeminiService();
