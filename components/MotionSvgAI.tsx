@@ -33,6 +33,7 @@ const MotionSvgAI: React.FC<MotionSvgAIProps> = ({ onBack, theme, userTier }) =>
 
     const [motionSvgPrompt, setMotionSvgPrompt] = useState('');
     const [motionSvgIsPromotional, setMotionSvgIsPromotional] = useState(false);
+    const [useProModel, setUseProModel] = useState(false);
     const [motionSvgCode, setMotionSvgCode] = useState('');
     const [motionSvgLoading, setMotionSvgLoading] = useState(false);
     const [motionSvgExporting, setMotionSvgExporting] = useState(false);
@@ -41,7 +42,7 @@ const MotionSvgAI: React.FC<MotionSvgAIProps> = ({ onBack, theme, userTier }) =>
     const handleGenerateMotionSvg = async () => {
         setMotionSvgLoading(true);
         try {
-            const svg = await generateSVG(motionSvgPrompt, motionSvgIsPromotional);
+            const svg = await generateSVG(motionSvgPrompt, motionSvgIsPromotional, useProModel);
             setMotionSvgCode(svg);
         } catch (e) {
             console.error(e);
@@ -75,9 +76,9 @@ const MotionSvgAI: React.FC<MotionSvgAIProps> = ({ onBack, theme, userTier }) =>
                 URL.revokeObjectURL(url);
             }, 1000);
 
-        } catch (error) {
+        } catch (error: any) {
             console.error('Export failed:', error);
-            alert('Failed to export video.');
+            alert(`Failed to export video.\n\n${error.message || 'Check console for FFmpeg details.'}`);
         }
         setMotionSvgExporting(false);
         setMotionSvgExportProgress(0);
@@ -148,6 +149,29 @@ const MotionSvgAI: React.FC<MotionSvgAIProps> = ({ onBack, theme, userTier }) =>
                                     <option value="true">Promotional Sequence (30-60s)</option>
                                 </select>
                             </div>
+
+                            {/* Gemini 3.1 Pro Toggle (Showrunner Only) */}
+                            {userTier === 'SHOWRUNNER' && (
+                                <div className={`flex items-center justify-between p-4 rounded-xl border ${borderColor} ${isDark ? 'bg-gray-800/50' : 'bg-gray-50'}`}>
+                                    <div>
+                                        <label className={`text-sm font-bold ${textColor} block mb-0.5`}>
+                                            Gemini 3.1 Pro Engine
+                                        </label>
+                                        <p className={`text-xs ${subTextColor}`}>
+                                            Use Google's flagship model for cinematic complexity.
+                                        </p>
+                                    </div>
+                                    <label className="relative inline-flex items-center cursor-pointer">
+                                        <input 
+                                            type="checkbox" 
+                                            className="sr-only peer" 
+                                            checked={useProModel}
+                                            onChange={(e) => setUseProModel(e.target.checked)}
+                                        />
+                                        <div className="w-11 h-6 bg-gray-300 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-muse-600"></div>
+                                    </label>
+                                </div>
+                            )}
 
                             <GenButton
                                 onClick={handleGenerateMotionSvg}

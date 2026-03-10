@@ -602,25 +602,29 @@ export const analyzeMediaContext = async (assets: Asset[]): Promise<string> => {
   }
 }
 
-export const generateSVG = async (prompt: string, isPromotional: boolean = false): Promise<string> => {
-  const modelId = 'gemini-2.5-pro';
+export const generateSVG = async (prompt: string, isPromotional: boolean = false, useProModel: boolean = false): Promise<string> => {
+  const modelId = useProModel ? 'gemini-3.1-pro-preview' : 'gemini-2.5-pro';
   
   const duration = isPromotional ? "30 to 60 seconds" : "15 to 30 seconds";
-  const complexity = isPromotional ? "multi-stage promotional sequence with cinematic transitions, text overlays, and professional motion curves" : "professional high-end motion graphics loop";
+  // Substantially increased the prompt requirements for Promotional sequences to guarantee multi-scene marketing videos
+  const complexity = isPromotional 
+    ? "multi-stage promotional marketing sequence. MUST INCLUDE: 1) A clear Intro Hook, 2) Visual Value Proposition with readable text overlays (<text> tags), and 3) A clear Outro/Call to Action. Use sweeping cinematic camera movements via viewBox/transform animations, professional motion curves (cubic-bezier), and high-end aesthetics." 
+    : "professional high-end motion graphics loop";
 
-  const contents = `You are a world-class Motion Graphics Designer and SVG Expert. 
+  const contents = `You are a world-class Motion Graphics Designer and Marketing Video Expert. 
     
-    Task: Create a professional, high-end animated SVG for the following request: "${prompt}". 
+    Task: Create a professional, high-end animated SVG video for the following request: "${prompt}". 
     
     Technical Requirements:
     1. Output ONLY the raw SVG code. No markdown, no explanations.
     2. Include sophisticated CSS animations within a <style> tag. Use cubic-bezier timing functions for natural motion.
-    3. Duration: ${duration}. Complexity: ${complexity}.
-    4. Aesthetics: Use modern design trends—glassmorphism, mesh gradients, dynamic shadows, fluid organic paths, and high-end typography.
-    5. Responsiveness: Use viewBox and width/height="100%".
-    6. Structure: Use groups (<g>) to organize scenes. Use unique, descriptive IDs for all elements.
-    7. Animation: For promotional videos, implement a multi-scene structure where elements transition in and out. Use opacity, transform (scale, rotate, translate), and filter (blur) animations.
-    8. Quality: The result must look like it was made in After Effects or Figma, but implemented entirely in SVG/CSS.`;
+    3. Duration: ${duration}. 
+    4. Complexity: ${complexity}.
+    5. Aesthetics: Use modern design trends—glassmorphism, mesh gradients, dynamic shadows, fluid organic paths, and high-end typography.
+    6. Responsiveness: Use viewBox and width/height="100%".
+    7. Structure: Use groups (<g>) to organize sequential scenes. Use unique, descriptive IDs for all elements.
+    8. Animation: For promotional videos, elements MUST transition in and out to tell a story over time. Use keyframes combining opacity, transform (scale, rotate, translate), and filter (blur).
+    9. Quality: The result must look like a real video ad made in After Effects, implemented entirely in SVG/CSS.`;
 
   try {
     const response = await callGeminiProxy(modelId, contents, {

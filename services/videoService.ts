@@ -10,6 +10,10 @@ async function loadFFmpeg() {
   if (ffmpeg) return ffmpeg;
   ffmpeg = new FFmpeg();
   
+  ffmpeg.on('log', ({ message }) => {
+    console.log('[FFmpeg]', message);
+  });
+  
   const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/esm';
   await ffmpeg.load({
     coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
@@ -113,8 +117,9 @@ export async function convertSVGToMP4(svgCode: string, duration: number, onProgr
     
     if (onProgress) onProgress(1.0);
     return mp4Blob;
-  } catch (error) {
-    // Fallback to WebM if browser doesn't support FFmpeg.wasm (SharedArrayBuffer issues)
-    return webmBlob; 
+  } catch (error: any) {
+    console.error('FFmpeg Conversion failed:', error);
+    // Do NOT silently fallback to WebM anymore, throw so the UI can alert
+    throw new Error('MP4 Conversion failed: ' + error?.message);
   }
 }
