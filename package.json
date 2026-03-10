@@ -9,13 +9,18 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@google/genai": "^1.39.0",
+    "@ffmpeg/ffmpeg": "^0.12.15",
+    "@ffmpeg/util": "^0.12.2",
+    "@google/genai": "^1.44.0",
     "@supabase/supabase-js": "^2.95.2",
+    "@types/recordrtc": "^5.6.15",
+    "canvg": "^4.0.3",
     "html2pdf.js": "^0.14.0",
     "marked": "12.0.0",
     "pptxgenjs": "^4.0.1",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "recordrtc": "^5.6.2"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

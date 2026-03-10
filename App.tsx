@@ -319,7 +319,7 @@ const App: React.FC = () => {
     };
 
     // Helper: check if current project type is a Domo Suite type
-    const isDomoSuiteType = projectType === ProjectType.PODCAST || projectType === ProjectType.NEWSLETTER || projectType === ProjectType.SLIDES;
+    const isDomoSuiteType = projectType === ProjectType.PODCAST || projectType === ProjectType.NEWSLETTER || projectType === ProjectType.SLIDES || projectType === ProjectType.MOTION_SVG;
 
     // Helper: premium tier check — Auteur & Showrunner only
     const isPremiumTier = userTier === 'AUTEUR' || userTier === 'SHOWRUNNER';
@@ -626,6 +626,7 @@ const App: React.FC = () => {
                             <NavButton active={projectType === ProjectType.PODCAST} onClick={() => handleProjectSelect(ProjectType.PODCAST)} icon="podcast" tooltip="Podcast Studio" />
                             <NavButton active={projectType === ProjectType.NEWSLETTER} onClick={() => handleProjectSelect(ProjectType.NEWSLETTER)} icon="newsletter" tooltip="Newsletter Gen" />
                             <NavButton active={projectType === ProjectType.SLIDES} onClick={() => handleProjectSelect(ProjectType.SLIDES)} icon="slides" tooltip="Slide Deck AI" />
+                            <NavButton active={projectType === ProjectType.MOTION_SVG} onClick={() => handleProjectSelect(ProjectType.MOTION_SVG)} icon="video" tooltip="MotionSVG AI" />
                             <NavButton active={projectType === ProjectType.YOUTUBE} onClick={() => handleProjectSelect(ProjectType.YOUTUBE)} icon="youtube" tooltip="YouTube Script" />
                             <NavButton active={projectType === ProjectType.SOCIAL_MEDIA} onClick={() => handleProjectSelect(ProjectType.SOCIAL_MEDIA)} icon="social" tooltip="Social Media" />
                         </div>
