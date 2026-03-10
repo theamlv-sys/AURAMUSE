@@ -34,7 +34,7 @@ export class GeminiService {
       {
         temperature: 0.7,
         topP: 0.95,
-        systemInstruction: systemInstruction
+        systemInstruction: { parts: [{ text: systemInstruction }] }
       }
     );
 
@@ -79,7 +79,7 @@ export class GeminiService {
       {
         temperature: 0.4,
         topP: 0.95,
-        systemInstruction: systemInstruction
+        systemInstruction: { parts: [{ text: systemInstruction }] }
       }
     );
 
