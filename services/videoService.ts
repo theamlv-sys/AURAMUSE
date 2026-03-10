@@ -32,32 +32,22 @@ export async function convertSVGToMP4(svgCode: string, duration: number, onProgr
   const ctx = canvas.getContext('2d', { alpha: false });
   if (!ctx) throw new Error('Could not get canvas context');
 
-  // 2. Parse and Sanitize SVG
-  // Clean common AI XML errors: unescaped ampersands
-  let cleanSvgCode = svgCode.replace(/&(?!#?[a-zA-Z0-9]+;)/g, '&amp;');
+  // 2. Parse and Sanitize SVG for Strict XML (Required by Canvg)
+  // Clean AI code completely by removing all unescaped & characters 
+  // (except well-formed entities like &amp; &lt; &gt; &apos; &quot; &#123;)
+  let cleanSvgCode = svgCode.replace(/&(?!([a-zA-Z0-9]+|#[0-9]+|#x[0-9a-fA-F]+);)/g, '&amp;');
 
-  const parser = new DOMParser();
-  let doc = parser.parseFromString(cleanSvgCode, 'image/svg+xml');
+  // First, parse as forgiving HTML to auto-repair missing closing tags and structure
+  const tempHtmlParser = new DOMParser();
+  const htmlDoc = tempHtmlParser.parseFromString(cleanSvgCode, 'text/html');
+  const rescuedSvg = htmlDoc.querySelector('svg');
   
-  // If strict XML parsing fails, fallback to HTML parsing which auto-repairs structure
-  if (doc.querySelector('parsererror')) {
-      const htmlDoc = parser.parseFromString(cleanSvgCode, 'text/html');
-      const rescuedSvg = htmlDoc.querySelector('svg');
-      if (rescuedSvg) {
-          // Re-serialize the auto-repaired HTML DOM back into strict XML
-          doc = parser.parseFromString(rescuedSvg.outerHTML, 'image/svg+xml');
-      }
-      
-      if (doc.querySelector('parsererror')) {
-          throw new Error('SVG code contains catastrophic XML syntax errors that cannot be repaired.');
-      }
+  if (!rescuedSvg) {
+      throw new Error('No valid SVG element could be rescued from the generated code.');
   }
 
-  const svgEl = doc.querySelector('svg');
-  if (!svgEl) throw new Error('No SVG element found after parsing.');
-  
   // CRITICAL: Sanitize SVG for Canvg to prevent CSS selector crashes
-  const allElements = doc.querySelectorAll('*');
+  const allElements = rescuedSvg.querySelectorAll('*');
   allElements.forEach(el => {
     if (el.hasAttribute('class')) {
       const cls = el.getAttribute('class');
@@ -74,7 +64,18 @@ export async function convertSVGToMP4(svgCode: string, duration: number, onProgr
     }
   });
 
-  const sanitizedSvgCode = new XMLSerializer().serializeToString(doc);
+  // Re-serialize the corrected SVG
+  let sanitizedSvgCode = rescuedSvg.outerHTML;
+
+  // Final strict XML check to prevent Canvg from crashing with "parsererror"
+  const strictParser = new DOMParser();
+  const strictDoc = strictParser.parseFromString(sanitizedSvgCode, 'image/svg+xml');
+  const parserErrorNode = strictDoc.querySelector('parsererror');
+  
+  if (parserErrorNode) {
+      console.error('Catastrophic XML Error Details:', parserErrorNode.textContent);
+      throw new Error(`\n\n${parserErrorNode.textContent}\n\n`);
+  }
 
   // Set Dimensions (Default to 1080p)
   canvas.width = 1920;
