@@ -16,8 +16,7 @@ export enum ProjectType {
     CALENDAR = 'CALENDAR',
     PODCAST = 'PODCAST',
     NEWSLETTER = 'NEWSLETTER',
-    SLIDES = 'SLIDES',
-    MOTION_SVG = 'MOTION_SVG'
+    SLIDES = 'SLIDES'
 }
 
 export interface Project {

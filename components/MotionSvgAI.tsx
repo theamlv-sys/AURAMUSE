@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { generateSVG } from '../services/gemini';
+import { generateSVG } from '../services/geminiService';
 import { convertSVGToMP4 } from '../services/videoService';
 
 interface MotionSvgAIProps {
