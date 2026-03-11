@@ -87,7 +87,8 @@ export async function convertSVGToMP4(svgCode: string, duration: number, onProgr
   // 3. Setup Canvg
   let v: Canvg;
   try {
-    v = await Canvg.from(ctx, svgEl as any);
+    // Canvg.from expects a string (content or URL) in version 4
+    v = await Canvg.from(ctx, svgEl.outerHTML);
   } catch (e) {
     document.body.removeChild(canvas);
     document.body.removeChild(container);
