@@ -8,7 +8,38 @@ export class GeminiService {
     this.ai = new GoogleGenAI({ apiKey: import.meta.env.VITE_GOOGLE_GENAI_API_KEY || '' });
   }
 
-  async generateSVG(prompt: string, isPromotional: boolean = false) {
+  async researchTopic(prompt: string) {
+    const systemInstruction = `You are a Research Assistant for a Motion Graphics Designer. 
+      Your task is to research the topic, brand, or industry mentioned in the prompt: "${prompt}".
+      
+      Focus on:
+      1. Brand values and visual identity (colors, fonts, mood).
+      2. Modern design trends related to this specific topic.
+      3. Key messaging that should be included in a 60s promotional video.
+      4. Visual metaphors that translate well to motion graphics.
+      
+      Output a concise summary of your findings that will guide the SVG generation. Use Google Search to ensure accuracy.`;
+
+    const response = await callGeminiProxy('gemini-3.1-pro-preview', 
+      [{ parts: [{ text: prompt }] }],
+      {
+        temperature: 0.7,
+        topP: 0.95,
+        systemInstruction: { parts: [{ text: systemInstruction }] },
+        tools: [{ googleSearch: {} }] // Enable search for research
+      }
+    );
+
+    const research = response.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const sources = response.candidates?.[0]?.groundingMetadata?.groundingChunks?.map((chunk: any) => chunk.web?.uri).filter(Boolean);
+
+    return {
+      research,
+      sources: sources || []
+    };
+  }
+
+  async generateSVG(prompt: string, isPromotional: boolean = false, researchContext?: string) {
     const duration = isPromotional ? "30 to 60 seconds" : "15 to 30 seconds";
     const complexity = isPromotional ? "multi-stage promotional sequence with cinematic transitions, text overlays, and professional motion curves" : "professional high-end motion graphics loop";
 
@@ -16,8 +47,7 @@ export class GeminiService {
       
       Task: Create a professional, high-end animated SVG for the following request: "${prompt}". 
       
-      Research & Context:
-      Use Google Search to research the topic, brand, or industry mentioned in the prompt to ensure the visual style, colors, and messaging are accurate and professional.
+      ${researchContext ? `Research context to guide your design: \n${researchContext}\n` : ''}
       
       Technical Requirements:
       1. Output ONLY the raw SVG code. No markdown, no explanations.

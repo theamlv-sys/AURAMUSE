@@ -89,12 +89,20 @@ export function VideoStudio() {
     setStatus('Researching topic and brand context...');
 
     try {
-      const result = await geminiService.generateSVG(activePrompt, isPromotional);
+      // Step 1: Research
+      setStatus('Researching topic and brand context...');
+      const researchResult = await geminiService.researchTopic(activePrompt);
+      const researchContext = researchResult.research;
+      const researchSources = researchResult.sources;
+      
       setIsResearching(false);
+      
+      // Step 2: Generation
       setStatus(isPromotional ? 'Generating 60s Promotional Video...' : 'Generating SVG code...');
+      const result = await geminiService.generateSVG(activePrompt, isPromotional, researchContext);
       
       const svgCode = result.code;
-      const sources = result.sources;
+      const sources = [...new Set([...researchSources, ...(result.sources || [])])];
       
       const newItem: SVGItem = {
         id: Math.random().toString(36).substr(2, 9),
@@ -475,7 +483,10 @@ export function VideoStudio() {
                           {isExporting ? (
                             <Loader2 className="w-5 h-5 animate-spin" />
                           ) : (
-                            <Download className="w-5 h-5" />
+                            <div className="flex items-center gap-2 px-2">
+                              <Download className="w-5 h-5" />
+                              <span className="text-[10px] font-bold uppercase tracking-widest">Generate MP4</span>
+                            </div>
                           )}
                           {isExporting && (
                             <motion.div 
@@ -487,10 +498,11 @@ export function VideoStudio() {
                         </button>
                         <button 
                           onClick={downloadSVG}
-                          className="p-3 rounded-full bg-black/60 backdrop-blur-md border border-white/10 hover:bg-white hover:text-black transition-all"
+                          className="p-3 px-4 rounded-full bg-black/60 backdrop-blur-md border border-white/10 hover:bg-white hover:text-black transition-all flex items-center gap-2"
                           title="Download SVG"
                         >
                           <Layers className="w-5 h-5" />
+                          <span className="text-[10px] font-bold uppercase tracking-widest">SVG</span>
                         </button>
                         <button 
                           onClick={() => {

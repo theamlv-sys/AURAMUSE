@@ -139,7 +139,7 @@ export async function convertSVGToMP4(svgCode: string, duration: number, onProgr
     'video/mp4'
   ];
   
-  let selectedMimeType = supportedMimeTypes.find(mime => RecordRTC.isTypeSupported(mime)) || 'video/webm';
+  let selectedMimeType = (supportedMimeTypes.find(mime => (RecordRTC as any).isTypeSupported(mime)) || 'video/webm') as any;
   console.log('Using mimeType:', selectedMimeType);
 
   const recorder = new RecordRTC(stream, {
@@ -215,7 +215,7 @@ export async function convertSVGToMP4(svgCode: string, duration: number, onProgr
     if (onProgress) onProgress(0.9);
 
     const data = await ffmpegInstance.readFile(outputName);
-    const mp4Blob = new Blob([data], { type: 'video/mp4' });
+    const mp4Blob = new Blob([data as any], { type: 'video/mp4' });
     
     console.log('MP4 conversion complete, size:', mp4Blob.size);
 
@@ -226,9 +226,10 @@ export async function convertSVGToMP4(svgCode: string, duration: number, onProgr
     if (onProgress) onProgress(1.0);
     return mp4Blob;
   } catch (error) {
-    console.error('FFmpeg conversion failed, falling back to WebM:', error);
+    console.error('FFmpeg MP4 conversion failed:', error);
     // If FFmpeg fails, return the WebM blob as a fallback so the user gets SOMETHING
     if (onProgress) onProgress(1.0);
+    // We notify the caller that it's a fallback through the blob type
     return webmBlob;
   }
 }
