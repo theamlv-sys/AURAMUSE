@@ -47,9 +47,13 @@ export async function convertSVGToMP4(svgCode: string, duration: number, onProgr
     throw new Error('Could not get canvas context');
   }
 
-  // Pre-sanitize the SVG string: Escape unescaped ampersands
-  // We only escape ampersands that are NOT already part of an entity ref (&...;)
-  const sanitizedString = svgCode.replace(/&(?!([a-z0-9]+|#[0-9]+|#x[a-f0-9]+);)/gi, '&amp;');
+  // Pre-sanitize the SVG string: Aggressively escape ampersands
+  // First, escape ALL ampersands to &amp;
+  // Then selectively unescape those that look like valid XML entities (e.g. &lt;, &gt;, &#123;)
+  // This is safer than trying to skip them with a complex lookup.
+  const sanitizedString = svgCode
+    .replace(/&/g, '&amp;')
+    .replace(/&amp;([a-zA-Z0-9]+|#[0-9]+|#x[0-9a-fA-F]+);/g, '&$1;');
 
   // Parse SVG to get dimensions and sanitize
   const parser = new DOMParser();
