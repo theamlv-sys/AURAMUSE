@@ -279,9 +279,6 @@ export function VideoStudio() {
         </div>
         
         <nav className="hidden md:flex items-center gap-6">
-          <button className="text-xs uppercase tracking-widest text-white/40 hover:text-white transition-colors">Showcase</button>
-          <button className="text-xs uppercase tracking-widest text-white/40 hover:text-white transition-colors">Docs</button>
-          <div className="h-4 w-px bg-white/10" />
           <button className="flex items-center gap-2 px-4 py-2 rounded-full glass-panel text-xs uppercase tracking-widest hover:bg-white/10 transition-colors">
             <History className="w-3.5 h-3.5" />
             History
@@ -687,9 +684,6 @@ export function VideoStudio() {
           <span>Vector Synthesis Engine v2.0</span>
         </div>
         <div className="flex items-center gap-6">
-          <a href="#" className="hover:text-white transition-colors">Terms</a>
-          <a href="#" className="hover:text-white transition-colors">Privacy</a>
-          <a href="#" className="hover:text-white transition-colors">API Status</a>
         </div>
       </footer>
     </div>

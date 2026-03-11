@@ -311,6 +311,10 @@ const App: React.FC = () => {
             setViewMode('EDITOR');
             return;
         }
+        if (mode === 'MOTION_SVG' && userTier !== 'SHOWRUNNER') {
+            alert('MotionSVG AI is a Showrunner feature. Please upgrade your plan.');
+            return;
+        }
         if (mode === 'LEGAL_PRIVACY' || mode === 'LEGAL_TERMS') {
             navigateToView(mode);
         } else {
