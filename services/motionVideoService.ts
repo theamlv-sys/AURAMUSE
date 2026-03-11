@@ -47,9 +47,22 @@ export async function convertSVGToMP4(svgCode: string, duration: number, onProgr
     throw new Error('Could not get canvas context');
   }
 
+  // Pre-sanitize the SVG string: Escape unescaped ampersands
+  // We only escape ampersands that are NOT already part of an entity ref (&...;)
+  const sanitizedString = svgCode.replace(/&(?!([a-z0-9]+|#[0-9]+|#x[a-f0-9]+);)/gi, '&amp;');
+
   // Parse SVG to get dimensions and sanitize
   const parser = new DOMParser();
-  const doc = parser.parseFromString(svgCode, 'image/svg+xml');
+  const doc = parser.parseFromString(sanitizedString, 'image/svg+xml');
+  
+  // Check for parser errors
+  const parserError = doc.querySelector('parsererror');
+  if (parserError) {
+    console.error('SVG XML Parsing Error:', parserError.textContent);
+    document.body.removeChild(canvas);
+    throw new Error(`SVG Parsing Failed: ${parserError.textContent?.split('\n')[0] || 'Invalid XML'}`);
+  }
+
   const svgEl = doc.querySelector('svg');
   if (!svgEl) {
     document.body.removeChild(canvas);
