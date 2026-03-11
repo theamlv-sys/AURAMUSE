@@ -1,6 +1,5 @@
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile, toBlobURL } from '@ffmpeg/util';
-import RecordRTC from 'recordrtc';
 import { Canvg } from 'canvg';
 
 let ffmpeg: FFmpeg | null = null;
@@ -131,122 +130,113 @@ export async function convertSVGToMP4(svgCode: string, duration: number, onProgr
   console.log(`Exporting video at ${width}x${height}`);
 
   // 2. Setup Canvg
-  let v;
+  // We'll append the SVG to the DOM to ensure SMIL animations and CSS animations can be processed
+  const container = document.createElement('div');
+  container.style.position = 'fixed';
+  container.style.left = '-9999px';
+  container.style.top = '-9999px';
+  container.style.visibility = 'hidden';
+  // Use the doc we already parsed and sanitized
+  // svgEl is already declared above (line 70)
+  if (!svgEl) throw new Error('Invalid SVG');
+  container.appendChild(svgEl);
+  document.body.appendChild(container);
+
+  let v: Canvg;
   try {
-    v = await Canvg.from(ctx, sanitizedSvgCode);
+    // Pass the live element to Canvg
+    v = await Canvg.from(ctx, svgEl as any);
   } catch (e) {
     console.error('Canvg initialization failed:', e);
     document.body.removeChild(canvas);
+    document.body.removeChild(container);
     throw new Error(`SVG Rendering failed: ${e instanceof Error ? e.message : String(e)}`);
   }
   
-  // 3. Setup RecordRTC with fallback mime types
-  let stream: MediaStream;
+  // 3. Setup FFmpeg
+  console.log('Loading FFmpeg...');
+  let ffmpegInstance: FFmpeg;
   try {
-    stream = (canvas as any).captureStream(30);
+    ffmpegInstance = await loadFFmpeg();
   } catch (e) {
     document.body.removeChild(canvas);
-    throw new Error('Canvas captureStream is not supported in this browser.');
-  }
-
-  const supportedMimeTypes = [
-    'video/webm;codecs=vp9',
-    'video/webm;codecs=vp8',
-    'video/webm',
-    'video/mp4'
-  ];
-  
-  let selectedMimeType = (supportedMimeTypes.find(mime => (RecordRTC as any).isTypeSupported(mime)) || 'video/webm') as any;
-  console.log('Using mimeType:', selectedMimeType);
-
-  const recorder = new RecordRTC(stream, {
-    type: 'video',
-    mimeType: selectedMimeType,
-    bitsPerSecond: 12800000,
-  });
-
-  // 4. Start recording
-  console.log('Starting recording...');
-  recorder.startRecording();
-  v.start();
-  
-  // Give it a moment to start drawing
-  await new Promise(resolve => setTimeout(resolve, 500));
-
-  // Progress reporting during recording (0% to 50%)
-  const startTime = Date.now();
-  const totalMs = duration * 1000;
-  
-  while (Date.now() - startTime < totalMs) {
-    const elapsed = Date.now() - startTime;
-    const progress = Math.min(0.5, (elapsed / totalMs) * 0.5);
-    if (onProgress) onProgress(progress);
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-
-  // 5. Stop recording
-  console.log('Stopping recording...');
-  v.stop();
-  await new Promise<void>(resolve => {
-    recorder.stopRecording(() => resolve());
-  });
-
-  const webmBlob = recorder.getBlob();
-  console.log('WebM recording complete, size:', webmBlob.size);
-  
-  if (webmBlob.size < 1000) {
-    document.body.removeChild(canvas);
-    throw new Error('Recording failed: The generated video file is empty. This might be due to browser restrictions on canvas capture.');
+    document.body.removeChild(container);
+    throw e;
   }
   
-  // Cleanup canvas
-  document.body.removeChild(canvas);
+  // 4. Deterministic Frame-by-Frame Recording
+  const fps = 30; 
+  const totalFrames = Math.floor(duration * fps);
+  const frameDurationS = 1 / fps;
   
-  if (onProgress) onProgress(0.6);
-
-  // 6. Convert WebM to MP4 using FFmpeg.wasm
+  console.log(`Starting deterministic capture: ${totalFrames} frames at ${fps}fps`);
+  
   try {
-    console.log('Loading FFmpeg...');
-    const ffmpegInstance = await loadFFmpeg();
-    
-    const inputName = 'input.webm';
-    const outputName = 'output.mp4';
-    
-    await ffmpegInstance.writeFile(inputName, await fetchFile(webmBlob));
-    
-    if (onProgress) onProgress(0.7);
+    for (let i = 0; i < totalFrames; i++) {
+      const timestampSeconds = i * frameDurationS;
+      
+      // Use Canvg's internal clock for maximum synchronization with its rendering engine
+      try {
+        if ((v as any).screen && (v as any).screen.animations) {
+          (v as any).screen.animations.setCurrentTime(timestampSeconds * 1000);
+        }
+      } catch (e) {
+        // Fallback to the native SVG seek we already did
+      }
 
-    console.log('Running FFmpeg conversion...');
-    // Re-encode to ensure compatibility, ensuring even dimensions for libx264
+      await v.render();
+      
+      // Convert canvas to blob
+      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/png'));
+      if (!blob) throw new Error(`Failed to capture frame ${i}`);
+      
+      // Write to FFmpeg
+      const frameName = `frame${i.toString().padStart(5, '0')}.png`;
+      await ffmpegInstance.writeFile(frameName, await fetchFile(blob));
+      
+      // Progress reporting (0% to 80%)
+      if (onProgress) onProgress((i / totalFrames) * 0.8);
+      
+      if (i % 10 === 0) await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    
+    console.log('Capture complete. Encoding video...');
+    if (onProgress) onProgress(0.85);
+
+    const outputName = `output_${Date.now()}.mp4`;
+    
     await ffmpegInstance.exec([
-      '-i', inputName, 
-      '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2',
-      '-c:v', 'libx264', 
-      '-preset', 'ultrafast', 
-      '-crf', '28', 
-      '-pix_fmt', 'yuv420p', 
+      '-framerate', fps.toString(),
+      '-i', 'frame%05d.png',
+      '-c:v', 'libx264',
+      '-preset', 'ultrafast',
+      '-crf', '25',
+      '-pix_fmt', 'yuv420p',
       '-movflags', '+faststart',
       outputName
     ]);
     
-    if (onProgress) onProgress(0.9);
+    if (onProgress) onProgress(0.95);
 
     const data = await ffmpegInstance.readFile(outputName);
     const mp4Blob = new Blob([data as any], { type: 'video/mp4' });
     
-    console.log('MP4 conversion complete, size:', mp4Blob.size);
-
-    // Cleanup
-    await ffmpegInstance.deleteFile(inputName);
+    // Cleanup 
+    for (let i = 0; i < totalFrames; i++) {
+      const frameName = `frame${i.toString().padStart(5, '0')}.png`;
+      try { await ffmpegInstance.deleteFile(frameName); } catch(e) {}
+    }
     await ffmpegInstance.deleteFile(outputName);
     
+    document.body.removeChild(canvas);
+    document.body.removeChild(container);
     if (onProgress) onProgress(1.0);
     return mp4Blob;
+    
   } catch (error) {
-    console.error('FFmpeg MP4 conversion failed:', error);
-    // If FFmpeg fails, return the WebM blob as a fallback so the user gets SOMETHING
-    if (onProgress) onProgress(1.0);
-    // We notify the caller that it's a fallback through the blob type
-    return webmBlob;
+    console.error('Deterministic export failed:', error);
+    document.body.removeChild(canvas);
+    if (container.parentNode) document.body.removeChild(container);
+    throw error;
   }
 }
