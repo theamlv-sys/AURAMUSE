@@ -16,6 +16,7 @@ import CalendarMode from './components/CalendarMode';
 import EmailStudio from './components/EmailStudio';
 import { CreativeSuite } from './components/CreativeSuite';
 import { VideoStudio } from './components/VideoStudio';
+import SocialVideoGenerator from './components/SocialVideoGenerator';
 import YouTubeTools from './components/YouTubeTools';
 import SocialTools from './components/SocialTools';
 import { ProjectType, Asset, TTSState, VoiceName, StoryBibleEntry, VersionSnapshot, SubscriptionTier, UsageStats, TIERS, SavedProject, ViewMode } from './types';
@@ -315,6 +316,10 @@ const App: React.FC = () => {
             alert('MotionSVG AI is a Showrunner feature. Please upgrade your plan.');
             return;
         }
+        if (mode === 'SOCIAL_VIDEO' && userTier !== 'SHOWRUNNER') {
+            alert('Social Video Generator is a Showrunner feature. Please upgrade your plan.');
+            return;
+        }
         if (mode === 'LEGAL_PRIVACY' || mode === 'LEGAL_TERMS') {
             navigateToView(mode);
         } else {
@@ -564,6 +569,24 @@ const App: React.FC = () => {
                     </button>
                 </div>
                 <VideoStudio />
+            </div>
+        );
+    }
+
+    if (viewMode === 'SOCIAL_VIDEO') {
+        return (
+            <div className="flex-1 relative flex flex-col h-full overflow-hidden bg-gray-950">
+                <div className="absolute top-4 left-4 z-50">
+                    <button
+                        onClick={() => setViewMode('HOME')}
+                        className={`p-2 rounded-lg transition-colors ${theme === 'dark' ? 'bg-black/50 hover:bg-black text-white' : 'bg-white/50 hover:bg-white text-black'}`}
+                    >
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                        </svg>
+                    </button>
+                </div>
+                <SocialVideoGenerator onBack={() => setViewMode('HOME')} userTier={userTier} />
             </div>
         );
     }

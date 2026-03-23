@@ -143,3 +143,69 @@ export async function convertSVGToMP4(svgCode: string, duration: number, onProgr
     throw new Error('MP4 Conversion failed: ' + error?.message);
   }
 }
+
+export async function compileClipsWithAudio(
+  videoBlobs: Blob[],
+  audioBlob: Blob | null,
+  onProgress?: (progress: number) => void
+): Promise<Blob> {
+  try {
+    const ffmpegInstance = await loadFFmpeg();
+    if (onProgress) onProgress(0.1);
+
+    // Write all video blobs
+    const concatList = [];
+    for (let i = 0; i < videoBlobs.length; i++) {
+      const fileName = `input_${i}.mp4`;
+      await ffmpegInstance.writeFile(fileName, await fetchFile(videoBlobs[i]));
+      concatList.push(`file '${fileName}'`);
+    }
+
+    // Write concat list
+    await ffmpegInstance.writeFile('concat.txt', concatList.join('\n'));
+
+    // Prepare FFmpeg args
+    let args = ['-f', 'concat', '-safe', '0', '-i', 'concat.txt'];
+
+    // Write audio blob if provided
+    if (audioBlob) {
+      await ffmpegInstance.writeFile('audio.mp3', await fetchFile(audioBlob));
+      args.push('-i', 'audio.mp3');
+    }
+
+    // Add output encodings: copy video to not re-encode, re-encode audio to AAC
+    if (audioBlob) {
+      // With audio: copy video stream, encode audio to aac, truncate to shortest
+      args.push('-c:v', 'copy', '-c:a', 'aac', '-map', '0:v:0', '-map', '1:a:0', '-shortest', 'final_output.mp4');
+    } else {
+      // Without audio: simply copy video stream
+      args.push('-c', 'copy', 'final_output.mp4');
+    }
+
+    if (onProgress) onProgress(0.3);
+
+    await ffmpegInstance.exec(args);
+    if (onProgress) onProgress(0.9);
+
+    const data = await ffmpegInstance.readFile('final_output.mp4');
+    const finalBlob = new Blob([new Uint8Array(data as any)], { type: 'video/mp4' });
+
+    // Cleanup
+    for (let i = 0; i < videoBlobs.length; i++) {
+      await ffmpegInstance.deleteFile(`input_${i}.mp4`);
+    }
+    await ffmpegInstance.deleteFile('concat.txt');
+    if (audioBlob) {
+      await ffmpegInstance.deleteFile('audio.mp3');
+    }
+    await ffmpegInstance.deleteFile('final_output.mp4');
+
+    if (onProgress) onProgress(1.0);
+    return finalBlob;
+
+  } catch (error: any) {
+    console.error('FFmpeg Compilation failed:', error);
+    throw new Error('Video compilation failed: ' + error?.message);
+  }
+}
+

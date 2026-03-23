@@ -370,6 +370,16 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
                 theme={theme}
               />
             )}
+            {userTier === 'SHOWRUNNER' && (
+              <SidebarItem
+                icon={<SmartphoneIcon />}
+                label="Social Video Gen"
+                active={view === 'SOCIAL_VIDEO'}
+                onClick={() => onNavigate('SOCIAL_VIDEO')}
+                isSidebarOpen={isSidebarOpen}
+                theme={theme}
+              />
+            )}
           </div>
 
           {/* Bottom Actions */}
