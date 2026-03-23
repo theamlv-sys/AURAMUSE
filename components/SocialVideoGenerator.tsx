@@ -84,7 +84,7 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack, use
             }
             The total video duration should be approx ${duration} seconds. Provide enough scenes (approx 1 scene every 5 seconds). Only return valid JSON.`;
 
-            const aiResponse = await callGeminiProxy('gemini-3.1-flash-preview', { parts: [{ text: scriptPrompt }] }, { responseMimeType: 'application/json' });
+            const aiResponse = await callGeminiProxy('gemini-3.1-flash-lite-preview', { parts: [{ text: scriptPrompt }] }, { responseMimeType: 'application/json' });
             
             let plan;
             try {
@@ -107,7 +107,7 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack, use
             setCurrentStepText('Generating base cinematic frames for each scene...');
             
             const imagePromises = plan.scenes.map(async (scene: any, index: number) => {
-                const b64 = await generateStoryboardImage(scene.imagePrompt, userTier, '9:16', 'gemini-3-pro-image-preview');
+                const b64 = await generateStoryboardImage(scene.imagePrompt, userTier, '9:16', 'gemini-3.1-flash-image-preview');
                 return b64; // Data URL
             });
             
