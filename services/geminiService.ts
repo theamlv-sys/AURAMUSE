@@ -416,6 +416,13 @@ export async function callGeminiProxy(model: string, contents: any, config: any 
       body: JSON.stringify({ model, contents, config })
     });
 
+    if (response.ok) {
+      const contentType = response.headers.get('Content-Type') || '';
+      if (contentType.includes('video/') || contentType.includes('audio/') || contentType.includes('application/octet-stream')) {
+        return await response.blob() as any;
+      }
+    }
+
     const responseText = await response.text();
     let responseData;
     try {
@@ -543,8 +550,7 @@ export const generateVeoVideo = async (prompt: string, imageBase64?: string): Pr
     if (!operationName) {
         const videoUri = response.response?.generatedVideos?.[0]?.video?.uri;
         if (videoUri) {
-            const fetchResult = await fetch(videoUri);
-            const blob = await fetchResult.blob();
+            const blob = await callGeminiProxy('', null, { downloadUrl: videoUri });
             return URL.createObjectURL(blob);
         }
         throw new Error("No operation returned from Veo API. Proxy Response: " + JSON.stringify(response));
@@ -569,8 +575,7 @@ export const generateVeoVideo = async (prompt: string, imageBase64?: string): Pr
             
             if (!videoUri) throw new Error("Video URI not found in completed operation: " + JSON.stringify(pollRes));
             
-            const fetchResult = await fetch(videoUri);
-            const blob = await fetchResult.blob();
+            const blob = await callGeminiProxy('', null, { downloadUrl: videoUri });
             return URL.createObjectURL(blob);
         }
         console.log("Polling Veo operation...");

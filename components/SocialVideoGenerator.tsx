@@ -234,12 +234,12 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack, use
                         </div>
                         
                         {status === 'error' && (
-                            <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl text-sm">
+                            <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl text-sm font-bold">
                                 {currentStepText}
                             </div>
                         )}
                     </div>
-                ) : status !== 'complete' ? (
+                ) : (status !== 'complete' && status !== 'error') || (!finalVideoUrl && status !== 'error' && status !== 'complete') ? (
                     <div className="bg-[#0a0a0f] border border-[#1a1a20] rounded-2xl p-8 shadow-2xl flex flex-col items-center justify-center text-center min-h-[400px]">
                         <div className="relative w-32 h-32 mb-8">
                             <svg className="w-full h-full text-muse-500/20 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -278,6 +278,14 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack, use
                                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
                                 Download Video
                             </a>
+                            {status === 'error' && !finalVideoUrl && (
+                                <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl text-sm text-center">
+                                    <p className="font-bold mb-2">Generation Failed.</p>
+                                    <p>{currentStepText}</p>
+                                    <p className="mt-2 text-xs text-gray-400 text-left">Your partial assets (script, images, video clips) were preserved in the timeline on the right. You can right-click them to save.</p>
+                                </div>
+                            )}
+
                             <button 
                                 onClick={() => { setStatus('idle'); setFinalVideoUrl(null); setGeneratedScript(''); setGeneratedScenes([]); setLiveImages([]); setPrompt(''); setProgress(0); }}
                                 className="mt-4 w-full px-6 py-3 bg-transparent border border-gray-700 text-gray-300 hover:bg-gray-800 font-bold rounded-xl transition-all"

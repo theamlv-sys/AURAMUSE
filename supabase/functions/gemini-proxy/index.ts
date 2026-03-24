@@ -26,6 +26,21 @@ serve(async (req) => {
 
         const body = await req.json()
 
+        const downloadUrl = body.downloadUrl || body.config?.downloadUrl;
+        if (downloadUrl) {
+            const url = downloadUrl.includes('?') ? `${downloadUrl}&key=${geminiApiKey}` : `${downloadUrl}?key=${geminiApiKey}`;
+            const response = await fetch(url, { method: 'GET' });
+            if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(`Proxy Download Failed: ${response.status} - ${errText}`);
+            }
+            const buffer = await response.arrayBuffer();
+            return new Response(buffer, {
+                headers: { ...corsHeaders, 'Content-Type': response.headers.get('Content-Type') || 'application/octet-stream' },
+                status: 200
+            })
+        }
+
         // 2a. Handle Operation Polling
         const operationId = body.operation || body.config?.operation;
         if (operationId) {
