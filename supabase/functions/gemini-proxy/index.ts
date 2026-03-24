@@ -24,43 +24,83 @@ serve(async (req) => {
             throw new Error('No authorization header')
         }
 
-        const { model, contents, config } = await req.json()
+        const body = await req.json()
 
-        // 2. Call Gemini API via REST
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`
-
-        // Construct the payload for the Google API correctly
-        const googlePayload: any = {
-            contents: Array.isArray(contents)
-                ? contents
-                : (typeof contents === 'string' ? [{ parts: [{ text: contents }] }] : [contents]),
-            generationConfig: config || {},
-        }
-
-        // Move specific fields from config to the top level of the payload if they exist
-        // Google REST API expects systemInstruction and tools at the top level
-        if (config?.systemInstruction) {
-            googlePayload.systemInstruction = config.systemInstruction
-            delete googlePayload.generationConfig.systemInstruction
-        }
-        if (config?.tools) {
-            googlePayload.tools = config.tools
-            delete googlePayload.generationConfig.tools
+        // 2a. Handle Operation Polling
+        const operationId = body.operation || body.config?.operation;
+        if (operationId) {
+            const opUrl = `https://generativelanguage.googleapis.com/v1beta/${operationId}?key=${geminiApiKey}`
+            const response = await fetch(opUrl, { method: 'GET' })
+            const data = await response.json()
+            return new Response(JSON.stringify(data), {
+                headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                status: response.ok ? 200 : response.status,
+            })
         }
 
-        // Handle specific image/audio configs that should stay in generationConfig
-        // But ensure they aren't duplicate or misplaced
-        if (config?.responseModalities) {
-            googlePayload.generationConfig.responseModalities = config.responseModalities
-        }
-        if (config?.imageConfig) {
-            googlePayload.generationConfig.imageConfig = config.imageConfig
-        }
-        if (config?.speechConfig) {
-            googlePayload.generationConfig.speechConfig = config.speechConfig
+        const { model, contents, config } = body
+        if (!model) throw new Error("No model specified and no operation provided.");
+
+        // 2b. Call Gemini API via REST
+        let url = '';
+        let googlePayload: any = {};
+
+        if (model.startsWith('veo')) {
+            url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:predictLongRunning?key=${geminiApiKey}`;
+            
+            let prompt = "";
+            let imageObj = null;
+            
+            const parts = Array.isArray(contents) ? contents[0]?.parts || contents : contents?.parts || [];
+            const safeParts = Array.isArray(parts) ? parts : [parts];
+            
+            for (const p of safeParts) {
+                if (p.text) prompt += p.text + " ";
+                if (p.inlineData) {
+                    imageObj = {
+                        bytesBase64Encoded: p.inlineData.data,
+                        mimeType: p.inlineData.mimeType
+                    };
+                }
+            }
+
+            googlePayload = {
+                instances: [
+                    {
+                        prompt: prompt.trim(),
+                    }
+                ],
+                parameters: {
+                    aspectRatio: "16:9",
+                    personGeneration: "allow_adult"
+                }
+            };
+            if (imageObj) googlePayload.instances[0].image = imageObj;
+
+        } else {
+            url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
+            
+            googlePayload = {
+                contents: Array.isArray(contents)
+                    ? contents
+                    : (typeof contents === 'string' ? [{ parts: [{ text: contents }] }] : [contents]),
+                generationConfig: config || {},
+            }
+
+            if (config?.systemInstruction) {
+                googlePayload.systemInstruction = config.systemInstruction
+                delete googlePayload.generationConfig.systemInstruction
+            }
+            if (config?.tools) {
+                googlePayload.tools = config.tools
+                delete googlePayload.generationConfig.tools
+            }
+            if (config?.responseModalities) googlePayload.generationConfig.responseModalities = config.responseModalities;
+            if (config?.imageConfig) googlePayload.generationConfig.imageConfig = config.imageConfig;
+            if (config?.speechConfig) googlePayload.generationConfig.speechConfig = config.speechConfig;
         }
 
-        console.log(`Calling Gemini Model: ${model}`);
+        console.log(`Calling Gemini Proxy: ${model || body.operation}`);
 
         const response = await fetch(url, {
             method: 'POST',

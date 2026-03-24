@@ -538,13 +538,42 @@ export const generateVeoVideo = async (prompt: string, imageBase64?: string): Pr
 
     const response = await callGeminiProxy(modelId, { parts }, {});
 
-    const videoUri = response.response?.generatedVideos?.[0]?.video?.uri;
-    if (!videoUri) throw new Error("Video URI not found in response.");
+    let operationName = response.name;
 
-    // For now, we fetch without the key and assume the proxy handled access or returns an accessible URI
-    const fetchResult = await fetch(videoUri);
-    const blob = await fetchResult.blob();
-    return URL.createObjectURL(blob);
+    if (!operationName) {
+        const videoUri = response.response?.generatedVideos?.[0]?.video?.uri;
+        if (videoUri) {
+            const fetchResult = await fetch(videoUri);
+            const blob = await fetchResult.blob();
+            return URL.createObjectURL(blob);
+        }
+        throw new Error("No operation returned from Veo API. Proxy Response: " + JSON.stringify(response));
+    }
+
+    console.log("Started Veo Operation:", operationName);
+
+    // Poll until done
+    while (true) {
+        await new Promise(r => setTimeout(r, 8000)); // Poll every 8s
+        const pollRes = await callGeminiProxy(modelId, null, { operation: operationName });
+        
+        if (pollRes.done) {
+            if (pollRes.error) {
+                throw new Error("Veo Generation Error: " + JSON.stringify(pollRes.error));
+            }
+            
+            const videoUri = pollRes.response?.predictedVideos?.[0]?.video?.uri || 
+                           pollRes.response?.generatedVideos?.[0]?.video?.uri || 
+                           pollRes.response?.video?.uri;
+            
+            if (!videoUri) throw new Error("Video URI not found in completed operation: " + JSON.stringify(pollRes));
+            
+            const fetchResult = await fetch(videoUri);
+            const blob = await fetchResult.blob();
+            return URL.createObjectURL(blob);
+        }
+        console.log("Polling Veo operation...");
+    }
 
   } catch (error) {
     console.error("Video Gen Error:", error);
