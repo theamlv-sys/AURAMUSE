@@ -562,7 +562,8 @@ export const generateVeoVideo = async (prompt: string, imageBase64?: string): Pr
                 throw new Error("Veo Generation Error: " + JSON.stringify(pollRes.error));
             }
             
-            const videoUri = pollRes.response?.predictedVideos?.[0]?.video?.uri || 
+            const videoUri = pollRes.response?.generateVideoResponse?.generatedSamples?.[0]?.video?.uri ||
+                           pollRes.response?.predictedVideos?.[0]?.video?.uri || 
                            pollRes.response?.generatedVideos?.[0]?.video?.uri || 
                            pollRes.response?.video?.uri;
             
