@@ -173,13 +173,11 @@ export async function compileClipsWithAudio(
       args.push('-i', 'audio.mp3');
     }
 
-    // Add output encodings: copy video to not re-encode, re-encode audio to AAC
+    // Add output encodings: re-encode video to x264 (safer for browser playback), encode audio to AAC
     if (audioBlob) {
-      // With audio: copy video stream, encode audio to aac, truncate to shortest
-      args.push('-c:v', 'copy', '-c:a', 'aac', '-map', '0:v:0', '-map', '1:a:0', '-shortest', 'final_output.mp4');
+      args.push('-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-crf', '23', '-c:a', 'aac', '-map', '0:v:0', '-map', '1:a:0', '-shortest', 'final_output.mp4');
     } else {
-      // Without audio: simply copy video stream
-      args.push('-c', 'copy', 'final_output.mp4');
+      args.push('-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-crf', '23', 'final_output.mp4');
     }
 
     if (onProgress) onProgress(0.3);
