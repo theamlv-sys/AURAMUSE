@@ -462,7 +462,7 @@ export const generateStoryboardImage = async (
           },
         });
       } else {
-        data = await callGeminiProxy('gemini-2.5-flash-image', prompt, {
+        data = await callGeminiProxy(modelId, prompt, {
           imageConfig: {
             aspectRatio: aspectRatio,
           },
@@ -483,7 +483,7 @@ export const generateStoryboardImage = async (
       }
 
       if (lastImageData) {
-        return `data:${lastMimeType}; base64, ${lastImageData} `;
+        return `data:${lastMimeType};base64,${lastImageData}`;
       }
 
       throw new Error("No image generated in response.");

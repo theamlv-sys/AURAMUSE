@@ -21,6 +21,7 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack, use
     const [currentStepText, setCurrentStepText] = useState('');
     const [generatedScript, setGeneratedScript] = useState('');
     const [generatedScenes, setGeneratedScenes] = useState<any[]>([]);
+    const [liveImages, setLiveImages] = useState<string[]>([]);
 
     useEffect(() => {
         // Setup Speech Recognition
@@ -106,8 +107,16 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack, use
             setStatus('images');
             setCurrentStepText('Generating base cinematic frames for each scene...');
             
+            const blankImages = new Array(plan.scenes.length).fill('');
+            setLiveImages(blankImages);
+            
             const imagePromises = plan.scenes.map(async (scene: any, index: number) => {
                 const b64 = await generateStoryboardImage(scene.imagePrompt, userTier, '9:16', 'gemini-3.1-flash-image-preview');
+                setLiveImages(prev => {
+                    const newArr = [...prev];
+                    newArr[index] = b64;
+                    return newArr;
+                });
                 return b64; // Data URL
             });
             
@@ -122,7 +131,7 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack, use
             // Sequential generation to avoid potential parallel throttling on video endpoint
             for (let i = 0; i < baseImages.length; i++) {
                 setCurrentStepText(`Animating scene ${i+1} of ${baseImages.length}...`);
-                const base64Data = baseImages[i].split(',')[1];
+                const base64Data = baseImages[i].split(',')[1].trim(); // Fixed base64 parsing 
                 const videoUrl = await generateVeoVideo(plan.scenes[i].sceneDescription, base64Data);
                 videoUrls.push(videoUrl);
                 setProgress(40 + Math.floor((30 / baseImages.length) * (i + 1)));
@@ -270,25 +279,36 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack, use
                                 Download Video
                             </a>
                             <button 
-                                onClick={() => { setStatus('idle'); setFinalVideoUrl(null); setGeneratedScript(''); setPrompt(''); setProgress(0); }}
+                                onClick={() => { setStatus('idle'); setFinalVideoUrl(null); setGeneratedScript(''); setGeneratedScenes([]); setLiveImages([]); setPrompt(''); setProgress(0); }}
                                 className="mt-4 w-full px-6 py-3 bg-transparent border border-gray-700 text-gray-300 hover:bg-gray-800 font-bold rounded-xl transition-all"
                             >
                                 Create Another
                             </button>
                         </div>
                         
-                        <div className="flex-1 bg-[#0a0a0f] border border-[#1a1a20] rounded-2xl p-6 shadow-xl">
+                        <div className="flex-1 bg-[#0a0a0f] border border-[#1a1a20] rounded-2xl p-6 shadow-xl h-full flex flex-col">
                             <h3 className="text-lg font-bold text-white mb-4 border-b border-[#1a1a20] pb-2">Generated Script</h3>
-                            <div className="text-gray-300 whitespace-pre-wrap font-serif text-sm leading-relaxed max-w-none prose prose-invert">
+                            <div className="text-gray-300 whitespace-pre-wrap font-serif text-sm leading-relaxed max-w-none prose prose-invert overflow-y-auto max-h-48 mb-8 custom-scrollbar">
                                 {generatedScript || "Script rendering failed."}
                             </div>
                             
-                            <h3 className="text-lg font-bold text-white mt-8 mb-4 border-b border-[#1a1a20] pb-2">Scene Timeline</h3>
-                            <div className="space-y-4">
+                            <h3 className="text-lg font-bold text-white mb-4 border-b border-[#1a1a20] pb-2">Scene Timeline</h3>
+                            <div className="space-y-4 overflow-y-auto flex-1 custom-scrollbar">
                                 {generatedScenes.map((scene, i) => (
-                                    <div key={i} className="bg-[#111118] p-4 rounded-xl border border-white/5">
-                                        <div className="text-xs text-muse-500 font-bold uppercase mb-1">Scene {i+1}</div>
-                                        <p className="text-sm text-gray-300">{scene.sceneDescription}</p>
+                                    <div key={i} className="bg-[#111118] p-4 rounded-xl border border-white/5 flex gap-4 items-center">
+                                        <div className="w-20 h-auto aspect-[9/16] bg-black rounded-lg overflow-hidden flex-shrink-0 relative border border-gray-800">
+                                            {liveImages[i] ? (
+                                                <img src={liveImages[i]} alt={`Scene ${i+1}`} className="w-full h-full object-cover" />
+                                            ) : (
+                                                <div className="absolute inset-0 flex items-center justify-center">
+                                                    <svg className="w-5 h-5 text-gray-700 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 2v4"/></svg>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <div className="text-xs text-muse-500 font-bold uppercase mb-1">Scene {i+1}</div>
+                                            <p className="text-sm text-gray-300">{scene.sceneDescription}</p>
+                                        </div>
                                     </div>
                                 ))}
                             </div>
