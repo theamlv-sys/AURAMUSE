@@ -525,14 +525,18 @@ export const generateVeoVideo = async (prompt: string, imageBase64?: string): Pr
     // NOTE: Veo might require specialized handling or a different endpoint in the future.
     // For now, we attempt to proxy it. If the proxy doesn't support the videos endpoint,
     // this may need a dedicated backend function.
-    const response = await callGeminiProxy(modelId, prompt, {
-      videoConfig: {
-        numberOfVideos: 1,
-        resolution: '720p',
-        aspectRatio: '16:9'
-      },
-      imageBase64: imageBase64 // Handled by proxy if supported
-    });
+    const parts: any[] = [{ text: prompt }];
+    
+    if (imageBase64) {
+      parts.unshift({
+        inlineData: {
+          mimeType: 'image/jpeg',
+          data: imageBase64
+        }
+      });
+    }
+
+    const response = await callGeminiProxy(modelId, { parts }, {});
 
     const videoUri = response.response?.generatedVideos?.[0]?.video?.uri;
     if (!videoUri) throw new Error("Video URI not found in response.");

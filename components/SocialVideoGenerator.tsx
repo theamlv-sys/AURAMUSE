@@ -177,7 +177,7 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack, use
                 
                 <div className="mb-8">
                     <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-muse-400 to-purple-500 mb-2">Social Video Generator</h1>
-                    <p className="text-gray-400">Powered by Gemini 3.1 Flash, Imagen 3, Veo 3.1, and Gemini TTS</p>
+                    <p className="text-gray-400">Powered by Gemini 3.1 Flash, Nano Banana 2, Veo 3.1, and Gemini TTS</p>
                 </div>
                 
                 {status === 'idle' || status === 'error' ? (
