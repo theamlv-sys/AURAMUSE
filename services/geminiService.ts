@@ -573,6 +573,11 @@ export const generateVeoVideo = async (prompt: string, imageBase64?: string): Pr
                            pollRes.response?.generatedVideos?.[0]?.video?.uri || 
                            pollRes.response?.video?.uri;
             
+            const filteredReasons = pollRes.response?.generateVideoResponse?.raiMediaFilteredReasons;
+            if (filteredReasons && filteredReasons.length > 0) {
+                throw new Error(`Veo Filtered: ${filteredReasons.join(' ')}`);
+            }
+            
             if (!videoUri) throw new Error("Video URI not found in completed operation: " + JSON.stringify(pollRes));
             
             const blob = await callGeminiProxy('', null, { downloadUrl: videoUri });

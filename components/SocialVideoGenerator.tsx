@@ -78,7 +78,7 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack, use
               "script": "The full voiceover script reading natively",
               "scenes": [
                  { 
-                   "sceneDescription": "Detailed visual description of action for the video model",
+                   "sceneDescription": "Detailed visual description of action for the video model. ABSOLUTELY NO mention of sound, audio, talking, voices, or music. Focus purely on cinematic visuals, lighting, and camera movement to prevent triggering strict audio safety filters.",
                    "imagePrompt": "Cinematic purely visual prompt for the image model to create the first frame. No dialogue, no text."
                  }
               ]
