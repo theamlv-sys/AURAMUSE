@@ -151,48 +151,76 @@ export async function compileClipsWithAudio(
 ): Promise<Blob> {
   try {
     const ffmpegInstance = await loadFFmpeg();
+    let lastLog = '';
+    ffmpegInstance.on('log', ({ message }) => {
+      lastLog = message;
+      console.log('FFmpeg:', message);
+    });
+
     if (onProgress) onProgress(0.1);
 
     // Write all video blobs
-    const concatList = [];
+    let args = [];
     for (let i = 0; i < videoBlobs.length; i++) {
-      const fileName = `input_${i}.mp4`;
-      await ffmpegInstance.writeFile(fileName, await fetchFile(videoBlobs[i]));
-      concatList.push(`file '${fileName}'`);
+        const fileName = `input_${i}.mp4`;
+        await ffmpegInstance.writeFile(fileName, await fetchFile(videoBlobs[i]));
+        args.push('-i', fileName);
     }
 
-    // Write concat list
-    await ffmpegInstance.writeFile('concat.txt', concatList.join('\n'));
-
-    // Prepare FFmpeg args
-    let args = ['-f', 'concat', '-safe', '0', '-i', 'concat.txt'];
-
-    // Write audio blob if provided
+    // Write audio
     if (audioBlob) {
-      await ffmpegInstance.writeFile('audio.mp3', await fetchFile(audioBlob));
-      args.push('-i', 'audio.mp3');
+        await ffmpegInstance.writeFile('audio.mp3', await fetchFile(audioBlob));
+        args.push('-i', 'audio.mp3');
     }
 
-    // Add output encodings: re-encode video to x264 (safer for browser playback), encode audio to AAC
+    // Build filter complex
+    let filterComplex = '';
+    for (let i = 0; i < videoBlobs.length; i++) {
+        // Strip audio and force same framerate/scale
+        filterComplex += `[${i}:v]fps=30,scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,format=yuv420p[v${i}];`;
+    }
+    for (let i = 0; i < videoBlobs.length; i++) {
+        filterComplex += `[v${i}]`;
+    }
+    filterComplex += `concat=n=${videoBlobs.length}:v=1:a=0[outv]`;
+
+    args.push('-filter_complex', filterComplex);
+    args.push('-map', '[outv]');
+    
     if (audioBlob) {
-      args.push('-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-crf', '23', '-c:a', 'aac', '-map', '0:v:0', '-map', '1:a:0', '-shortest', 'final_output.mp4');
+        args.push('-map', `${videoBlobs.length}:a:0`);
+    }
+
+    // Encoders
+    if (audioBlob) {
+        args.push('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28', '-c:a', 'aac', '-shortest', 'final_output.mp4');
     } else {
-      args.push('-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p', '-crf', '23', 'final_output.mp4');
+        args.push('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28', 'final_output.mp4');
     }
 
     if (onProgress) onProgress(0.3);
 
-    await ffmpegInstance.exec(args);
+    const execCode = await ffmpegInstance.exec(args);
+    
+    if (execCode !== 0) {
+        throw new Error(`FFmpeg exited with code ${execCode}. Last log: ${lastLog}`);
+    }
+
     if (onProgress) onProgress(0.9);
 
-    const data = await ffmpegInstance.readFile('final_output.mp4');
+    let data;
+    try {
+        data = await ffmpegInstance.readFile('final_output.mp4');
+    } catch(fsErr) {
+        throw new Error(`Output file missing. Last FFmpeg log: ${lastLog}`);
+    }
+    
     const finalBlob = new Blob([new Uint8Array(data as any)], { type: 'video/mp4' });
 
     // Cleanup
     for (let i = 0; i < videoBlobs.length; i++) {
       await ffmpegInstance.deleteFile(`input_${i}.mp4`);
     }
-    await ffmpegInstance.deleteFile('concat.txt');
     if (audioBlob) {
       await ffmpegInstance.deleteFile('audio.mp3');
     }
@@ -203,7 +231,7 @@ export async function compileClipsWithAudio(
 
   } catch (error: any) {
     console.error('FFmpeg Compilation failed:', error);
-    throw new Error('Video compilation failed: ' + error?.message);
+    throw new Error(error?.message || typeof error === 'string' ? error : JSON.stringify(error));
   }
 }
 
