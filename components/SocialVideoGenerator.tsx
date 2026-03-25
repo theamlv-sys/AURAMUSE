@@ -1,331 +1,628 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Asset, SubscriptionTier } from '../types';
-import { generateWriting, generateStoryboardImage, generateVeoVideo, callGeminiProxy, generateSpeech } from '../services/geminiService';
-import { compileClipsWithAudio } from '../services/videoService';
+/**
+ * ShortsGen AI — Ported from AI Studio standalone app
+ * Routes all API calls through the existing Supabase gemini-proxy
+ */
 
-interface SocialVideoGeneratorProps {
-    onBack: () => void;
-    userTier: SubscriptionTier;
+import React, { useState, useEffect, useRef } from 'react';
+import { SubscriptionTier } from '../types';
+import { callGeminiProxy, generateVeoVideo } from '../services/geminiService';
+import { 
+  Sparkles, Video, Mic, Loader2, Play, AlertCircle,
+  Image as ImageIcon, Type, Volume2, RefreshCw, Download
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { FFmpeg } from '@ffmpeg/ffmpeg';
+import { fetchFile, toBlobURL } from '@ffmpeg/util';
+
+// --- Types ---
+type VideoStatus = 'idle' | 'generating_script' | 'generating_images' | 'generating_video' | 'generating_audio' | 'stitching_video' | 'completed' | 'failed';
+
+interface StoryboardFrame {
+  id: string;
+  imagePrompt: string;
+  imageUrl?: string;
+  videoUrl?: string;
+  scriptPart: string;
 }
 
-const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack, userTier }) => {
-    const [prompt, setPrompt] = useState('');
-    const [duration, setDuration] = useState<15 | 30 | 60>(15);
-    const [status, setStatus] = useState<'idle' | 'script' | 'images' | 'video' | 'audio' | 'compiling' | 'complete' | 'error'>('idle');
-    const [progress, setProgress] = useState(0);
-    const [finalVideoUrl, setFinalVideoUrl] = useState<string | null>(null);
-    const [isRecording, setIsRecording] = useState(false);
-    const recognitionRef = useRef<any>(null);
-    
-    // UI states during generation
-    const [currentStepText, setCurrentStepText] = useState('');
-    const [generatedScript, setGeneratedScript] = useState('');
-    const [generatedScenes, setGeneratedScenes] = useState<any[]>([]);
-    const [liveImages, setLiveImages] = useState<string[]>([]);
+interface VideoProject {
+  id: string;
+  idea: string;
+  style: string;
+  script: string;
+  frames: StoryboardFrame[];
+  audioUrl?: string;
+  audioDuration?: number;
+  finalVideoUrl?: string;
+  status: VideoStatus;
+  error?: string;
+}
 
-    useEffect(() => {
-        // Setup Speech Recognition
-        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-            const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-            recognitionRef.current = new SpeechRecognition();
-            recognitionRef.current.continuous = true;
-            recognitionRef.current.interimResults = true;
-            
-            recognitionRef.current.onresult = (event: any) => {
-                let interimTranscript = '';
-                let finalTranscript = '';
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    if (event.results[i].isFinal) {
-                        finalTranscript += event.results[i][0].transcript;
-                    } else {
-                        interimTranscript += event.results[i][0].transcript;
-                    }
-                }
-                if (finalTranscript) {
-                    setPrompt(prev => prev + ' ' + finalTranscript);
-                }
-            };
-            
-            recognitionRef.current.onerror = (event: any) => {
-                console.error("Speech recognition error", event.error);
-                setIsRecording(false);
-            };
-        }
-    }, []);
+// --- PCM to WAV helper ---
+function pcmToWav(pcmBase64: string, sampleRate: number = 24000): Blob {
+  const binaryString = atob(pcmBase64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
 
-    const toggleRecording = () => {
-        if (isRecording) {
-            recognitionRef.current?.stop();
-            setIsRecording(false);
-        } else {
-            setPrompt(''); // Clear before starting a new recording
-            recognitionRef.current?.start();
-            setIsRecording(true);
+  const buffer = new ArrayBuffer(44 + bytes.length);
+  const view = new DataView(buffer);
+  const writeString = (v: DataView, offset: number, s: string) => { for (let i = 0; i < s.length; i++) v.setUint8(offset + i, s.charCodeAt(i)); };
+  writeString(view, 0, 'RIFF');
+  view.setUint32(4, 36 + bytes.length, true);
+  writeString(view, 8, 'WAVE');
+  writeString(view, 12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(view, 36, 'data');
+  view.setUint32(40, bytes.length, true);
+  new Uint8Array(buffer, 44).set(bytes);
+
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+
+// --- Styles ---
+const styles = [
+  { name: 'Normal (Cinematic)', prompt: 'cinematic lighting, professional photography, 8k, highly detailed' },
+  { name: 'Stick Figure', prompt: 'minimalist stick figure drawing, simple lines, white background, hand-drawn style' },
+  { name: 'Cartoon', prompt: 'vibrant cartoon style, bold outlines, 2D animation look, colorful' },
+  { name: 'Anime', prompt: 'modern anime style, high contrast, expressive eyes, detailed backgrounds' },
+  { name: 'Cyberpunk', prompt: 'neon lights, futuristic city, dark atmosphere, high tech, glowing elements' },
+  { name: 'Watercolor', prompt: 'soft watercolor painting, artistic brush strokes, pastel colors, dreamy atmosphere' },
+  { name: 'Pixel Art', prompt: 'retro 16-bit pixel art, video game aesthetic, sharp pixels, limited color palette' },
+  { name: '3D Render', prompt: 'modern 3D animation style, Pixar inspired, soft lighting, smooth textures' },
+];
+
+// --- Component ---
+
+interface SocialVideoGeneratorProps {
+  onBack: () => void;
+  userTier: SubscriptionTier;
+}
+
+const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) => {
+  const [idea, setIdea] = useState('');
+  const [selectedStyle, setSelectedStyle] = useState('Normal (Cinematic)');
+  const [isRecording, setIsRecording] = useState(false);
+  const [project, setProject] = useState<VideoProject | null>(null);
+  const [loadingMessage, setLoadingMessage] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
+  const [currentFrameIdx, setCurrentFrameIdx] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const previewVideoRef = useRef<HTMLVideoElement>(null);
+
+  // -- Playback sync --
+  useEffect(() => {
+    let interval: any;
+    if (isPlaying && project?.audioUrl && audioRef.current) {
+      const updateFrame = () => {
+        if (audioRef.current) {
+          const duration = project.audioDuration || audioRef.current.duration || 15;
+          const currentTime = audioRef.current.currentTime;
+          const frameDuration = duration / project.frames.length;
+          const newIdx = Math.min(Math.floor(currentTime / frameDuration), project.frames.length - 1);
+          setCurrentFrameIdx(newIdx);
         }
+      };
+      interval = setInterval(updateFrame, 100);
+    }
+    return () => clearInterval(interval);
+  }, [isPlaying, project]);
+
+  const togglePlay = () => {
+    if (audioRef.current) {
+      if (isPlaying) {
+        audioRef.current.pause();
+      } else {
+        audioRef.current.currentTime = 0;
+        setCurrentFrameIdx(0);
+        audioRef.current.play().catch(err => console.error("Audio play failed", err));
+      }
+      setIsPlaying(!isPlaying);
+    }
+  };
+
+  const startVoiceInput = () => {
+    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+      alert("Speech recognition not supported in this browser.");
+      return;
+    }
+    const SpeechRecognition = (window as any).webkitSpeechRecognition || (window as any).SpeechRecognition;
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+    recognition.onstart = () => setIsRecording(true);
+    recognition.onend = () => setIsRecording(false);
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setIdea(prev => prev ? prev + " " + transcript : transcript);
     };
+    recognition.start();
+  };
 
-    const handleGenerate = async () => {
-        if (!prompt) return;
-        setStatus('script');
-        setProgress(5);
-        setCurrentStepText('Expanding your idea into a full script & scene list...');
-        
-        try {
-            // STEP 1: Generate Script & Scenes
-            const scriptPrompt = `You are a viral social media video producer. Take this idea: "${prompt}".
-            Produce a JSON object with:
-            {
-              "script": "The full voiceover script reading natively",
-              "scenes": [
-                 { 
-                   "sceneDescription": "Detailed visual description of action for the video model. ABSOLUTELY NO mention of sound, audio, talking, voices, or music. Focus purely on cinematic visuals, lighting, and camera movement to prevent triggering strict audio safety filters.",
-                   "imagePrompt": "Cinematic purely visual prompt for the image model to create the first frame. No dialogue, no text."
-                 }
-              ]
-            }
-            The total video duration should be approx ${duration} seconds. Provide enough scenes (approx 1 scene every 5 seconds). Only return valid JSON.`;
+  // --- CORE GENERATION PIPELINE ---
+  const generateVideo = async () => {
+    if (!idea.trim()) return;
 
-            const aiResponse = await callGeminiProxy('gemini-3.1-flash-lite-preview', { parts: [{ text: scriptPrompt }] }, { responseMimeType: 'application/json' });
-            
-            let plan;
-            try {
-                 const text = aiResponse.candidates?.[0]?.content?.parts?.[0]?.text;
-                 plan = JSON.parse(text || "{}");
-            } catch(e) {
-                 throw new Error("Failed to parse script JSON from AI.");
-            }
-            
-            if (!plan.script || !plan.scenes || plan.scenes.length === 0) {
-                throw new Error("Invalid script structure returned from AI.");
-            }
-            
-            setGeneratedScript(plan.script);
-            setGeneratedScenes(plan.scenes);
-            setProgress(20);
+    const stylePrompt = styles.find(s => s.name === selectedStyle)?.prompt || styles[0].prompt;
 
-            // STEP 2: Generate Still Images
-            setStatus('images');
-            setCurrentStepText('Generating base cinematic frames for each scene...');
-            
-            const blankImages = new Array(plan.scenes.length).fill('');
-            setLiveImages(blankImages);
-            
-            const imagePromises = plan.scenes.map(async (scene: any, index: number) => {
-                const b64 = await generateStoryboardImage(scene.imagePrompt, userTier, '9:16', 'gemini-3.1-flash-image-preview');
-                setLiveImages(prev => {
-                    const newArr = [...prev];
-                    newArr[index] = b64;
-                    return newArr;
-                });
-                return b64; // Data URL
-            });
-            
-            const baseImages = await Promise.all(imagePromises);
-            setProgress(40);
-
-            // STEP 3: Generate Video Clips
-            setStatus('video');
-            setCurrentStepText('Animating frames into video clips using Veo 3.1...');
-            
-            const videoUrls: string[] = [];
-            // Sequential generation to avoid potential parallel throttling on video endpoint
-            for (let i = 0; i < baseImages.length; i++) {
-                setCurrentStepText(`Animating scene ${i+1} of ${baseImages.length}...`);
-                const base64Data = baseImages[i].split(',')[1].trim(); // Fixed base64 parsing 
-                const videoUrl = await generateVeoVideo(plan.scenes[i].sceneDescription, base64Data);
-                videoUrls.push(videoUrl);
-                setProgress(40 + Math.floor((30 / baseImages.length) * (i + 1)));
-            }
-
-            // STEP 4: Generate Voice-over
-            setStatus('audio');
-            setCurrentStepText('Synthesizing voice-over using Gemini TTS...');
-            const audioB64 = await generateSpeech(plan.script, { singleVoice: 'Zephyr' });
-            setProgress(80);
-
-            // Convert everything to Blobs for FFmpeg
-            setStatus('compiling');
-            setCurrentStepText('Compiling final video with FFmpeg...');
-            
-            const videoBlobs = await Promise.all(videoUrls.map(async url => {
-                const res = await fetch(url);
-                return await res.blob();
-            }));
-            
-            // Audio B64 to Blob
-            const audioRaw = atob(audioB64);
-            const audioArray = new Uint8Array(new ArrayBuffer(audioRaw.length));
-            for (let i = 0; i < audioRaw.length; i++) {
-                audioArray[i] = audioRaw.charCodeAt(i);
-            }
-            const audioBlob = new Blob([audioArray], { type: 'audio/mp3' });
-            
-            const finalBlob = await compileClipsWithAudio(videoBlobs, audioBlob, (p) => {
-                setProgress(80 + Math.floor(p * 20));
-            });
-            
-            const finalUrl = URL.createObjectURL(finalBlob);
-            setFinalVideoUrl(finalUrl);
-            setStatus('complete');
-            setProgress(100);
-            
-        } catch (error: any) {
-            console.error("Generator Error:", error);
-            setStatus('error');
-            setCurrentStepText(error.message || "An unknown error occurred.");
-        }
+    const newProject: VideoProject = {
+      id: Math.random().toString(36).substr(2, 9),
+      idea,
+      style: selectedStyle,
+      script: '',
+      frames: [],
+      status: 'generating_script',
     };
+    setProject(newProject);
+    setLoadingMessage('Crafting the perfect script...');
 
-    return (
-        <div className="flex-1 h-full bg-[#050508] text-white p-6 md:p-12 overflow-y-auto custom-scrollbar flex flex-col">
-            <div className="max-w-4xl mx-auto w-full">
-                <button onClick={onBack} className="text-gray-400 hover:text-white flex items-center gap-2 mb-6">
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
-                    Back to Studio
-                </button>
-                
-                <div className="mb-8">
-                    <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-muse-400 to-purple-500 mb-2">Social Video Generator</h1>
-                    <p className="text-gray-400">Powered by Gemini 3.1 Flash, Nano Banana 2, Veo 3.1, and Gemini TTS</p>
-                </div>
-                
-                {status === 'idle' || status === 'error' ? (
-                    <div className="bg-[#0a0a0f] border border-[#1a1a20] rounded-2xl p-6 md:p-8 shadow-2xl">
-                        <label className="block text-sm font-bold text-gray-300 mb-3">What's your video idea?</label>
-                        <div className="relative">
-                            <textarea 
-                                value={prompt}
-                                onChange={(e) => setPrompt(e.target.value)}
-                                placeholder="E.g., A dramatic cinematic hook about why procrastination is secretly a superpower..."
-                                className="w-full h-32 bg-[#111118] border border-[#2a2a30] rounded-xl p-4 text-white focus:outline-none focus:border-muse-500 resize-none"
-                            />
-                            <button 
-                                onClick={toggleRecording}
-                                className={`absolute bottom-4 right-4 p-3 rounded-full flex items-center justify-center transition-all ${isRecording ? 'bg-red-500/20 text-red-500 animate-pulse' : 'bg-muse-500/20 text-muse-500 hover:bg-muse-500 hover:text-white'}`}
-                            >
-                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" /></svg>
-                            </button>
-                        </div>
-                        
-                        <div className="mt-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-                            <div>
-                                <label className="block text-sm font-bold text-gray-300 mb-2">Duration</label>
-                                <div className="flex gap-2">
-                                    {[15, 30, 60].map(d => (
-                                        <button 
-                                            key={d}
-                                            onClick={() => setDuration(d as any)}
-                                            className={`px-4 py-2 rounded-lg text-sm font-bold transition-colors ${duration === d ? 'bg-muse-600 text-white' : 'bg-[#111118] text-gray-400 hover:text-white border border-[#2a2a30]'}`}
-                                        >
-                                            {d}s
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                            
-                            <button 
-                                onClick={handleGenerate}
-                                disabled={!prompt || prompt.length < 5}
-                                className="w-full md:w-auto px-8 py-3 bg-gradient-to-r from-muse-600 to-purple-600 hover:from-muse-500 hover:to-purple-500 text-white font-bold rounded-xl shadow-lg shadow-muse-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                            >
-                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                Generate Video
-                            </button>
-                        </div>
-                        
-                        {status === 'error' && (
-                            <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl text-sm font-bold">
-                                {currentStepText}
-                            </div>
-                        )}
-                    </div>
-                ) : (status !== 'complete' && status !== 'error') || (!finalVideoUrl && status !== 'error' && status !== 'complete') ? (
-                    <div className="bg-[#0a0a0f] border border-[#1a1a20] rounded-2xl p-8 shadow-2xl flex flex-col items-center justify-center text-center min-h-[400px]">
-                        <div className="relative w-32 h-32 mb-8">
-                            <svg className="w-full h-full text-muse-500/20 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <circle cx="12" cy="12" r="10" />
-                                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
-                            </svg>
-                            <div className="absolute inset-0 flex items-center justify-center text-2xl font-black text-muse-400">
-                                {progress === 100 ? 99 : progress}%
-                            </div>
-                        </div>
-                        <h3 className="text-xl font-bold text-white mb-2 animate-pulse">{currentStepText}</h3>
-                        <p className="text-gray-500 text-sm max-w-md">
-                            Google's core AI models are writing the script, establishing cinematic frames, rendering video, synthesizing voice, and stitching it all together. This can take several minutes.
-                        </p>
-                    </div>
-                ) : (
-                    <div className="flex flex-col lg:flex-row gap-8 items-start">
-                        <div className="w-full lg:w-1/3 flex-shrink-0">
-                            <div className="aspect-[9/16] bg-black rounded-2xl overflow-hidden border border-gray-800 shadow-2xl relative">
-                                {finalVideoUrl && (
-                                    <video 
-                                        src={finalVideoUrl} 
-                                        controls 
-                                        autoPlay 
-                                        loop 
-                                        className="w-full h-full object-cover"
-                                    />
-                                )}
-                            </div>
-                            
-                            <a 
-                                href={finalVideoUrl!} 
-                                download="AuraDomoMuse-Short.mp4"
-                                className="mt-4 w-full px-6 py-3 bg-white text-black hover:bg-gray-200 font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2"
-                            >
-                                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
-                                Download Video
-                            </a>
-                            {status === 'error' && !finalVideoUrl && (
-                                <div className="mt-4 p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl text-sm text-center">
-                                    <p className="font-bold mb-2">Generation Failed.</p>
-                                    <p>{currentStepText}</p>
-                                    <p className="mt-2 text-xs text-gray-400 text-left">Your partial assets (script, images, video clips) were preserved in the timeline on the right. You can right-click them to save.</p>
-                                </div>
-                            )}
+    try {
+      // 1. Generate Script and Image Prompts via proxy
+      const scriptResponse = await callGeminiProxy('gemini-3.1-flash-lite-preview', {
+        parts: [{
+          text: `Create a viral short-form video script (TikTok/Reels) for this idea: "${idea}". 
+          The visual style is: ${selectedStyle}.
+          Return a JSON object with:
+          - "script": the full voiceover text
+          - "frames": an array of 3-5 objects, each with "scriptPart" (text for that segment) and "imagePrompt" (detailed visual description for image generation matching the ${selectedStyle} style, 9:16 aspect ratio, NO mention of sound, audio, talking, voices, or music).`
+        }]
+      }, { responseMimeType: 'application/json' });
 
-                            <button 
-                                onClick={() => { setStatus('idle'); setFinalVideoUrl(null); setGeneratedScript(''); setGeneratedScenes([]); setLiveImages([]); setPrompt(''); setProgress(0); }}
-                                className="mt-4 w-full px-6 py-3 bg-transparent border border-gray-700 text-gray-300 hover:bg-gray-800 font-bold rounded-xl transition-all"
-                            >
-                                Create Another
-                            </button>
-                        </div>
-                        
-                        <div className="flex-1 bg-[#0a0a0f] border border-[#1a1a20] rounded-2xl p-6 shadow-xl h-full flex flex-col">
-                            <h3 className="text-lg font-bold text-white mb-4 border-b border-[#1a1a20] pb-2">Generated Script</h3>
-                            <div className="text-gray-300 whitespace-pre-wrap font-serif text-sm leading-relaxed max-w-none prose prose-invert overflow-y-auto max-h-48 mb-8 custom-scrollbar">
-                                {generatedScript || "Script rendering failed."}
-                            </div>
-                            
-                            <h3 className="text-lg font-bold text-white mb-4 border-b border-[#1a1a20] pb-2">Scene Timeline</h3>
-                            <div className="space-y-4 overflow-y-auto flex-1 custom-scrollbar">
-                                {generatedScenes.map((scene, i) => (
-                                    <div key={i} className="bg-[#111118] p-4 rounded-xl border border-white/5 flex gap-4 items-center">
-                                        <div className="w-20 h-auto aspect-[9/16] bg-black rounded-lg overflow-hidden flex-shrink-0 relative border border-gray-800">
-                                            {liveImages[i] ? (
-                                                <img src={liveImages[i]} alt={`Scene ${i+1}`} className="w-full h-full object-cover" />
-                                            ) : (
-                                                <div className="absolute inset-0 flex items-center justify-center">
-                                                    <svg className="w-5 h-5 text-gray-700 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 2v4"/></svg>
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div>
-                                            <div className="text-xs text-muse-500 font-bold uppercase mb-1">Scene {i+1}</div>
-                                            <p className="text-sm text-gray-300">{scene.sceneDescription}</p>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                )}
+      const scriptData = JSON.parse(scriptResponse.candidates?.[0]?.content?.parts?.[0]?.text || '{}');
+      if (!scriptData.script || !scriptData.frames || scriptData.frames.length === 0) {
+        throw new Error("Invalid script structure returned from AI.");
+      }
+
+      setProject(prev => prev ? { 
+        ...prev, 
+        script: scriptData.script, 
+        frames: scriptData.frames.map((f: any) => ({ ...f, id: Math.random().toString(36).substr(2, 5) })),
+        status: 'generating_images' 
+      } : null);
+      setLoadingMessage(`Visualizing your story in ${selectedStyle} style...`);
+
+      // 2. Generate Images via proxy (Nano Banana 2)
+      const updatedFrames: StoryboardFrame[] = [];
+      for (const frame of scriptData.frames) {
+        const imgResponse = await callGeminiProxy('gemini-3.1-flash-image-preview', {
+          parts: [{ text: `${frame.imagePrompt}, ${stylePrompt}, 9:16 aspect ratio` }]
+        }, {
+          responseModalities: ['Text', 'Image'],
+          imageConfig: { aspectRatio: '9:16', imageSize: '1K' }
+        });
+
+        let imageUrl = '';
+        for (const part of imgResponse.candidates?.[0]?.content?.parts || []) {
+          if (part.thought) continue;
+          if (part.inlineData) {
+            imageUrl = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+            break;
+          }
+        }
+        updatedFrames.push({ ...frame, id: Math.random().toString(36).substr(2, 5), imageUrl });
+        setProject(prev => prev ? { ...prev, frames: [...updatedFrames] } : null);
+      }
+
+      // 3. Generate Audio (TTS) via proxy
+      setProject(prev => prev ? { ...prev, status: 'generating_audio' } : null);
+      setLoadingMessage('Recording professional voiceover...');
+
+      const audioResponse = await callGeminiProxy('gemini-2.5-flash-preview-tts', 
+        [{ parts: [{ text: `Say energetically and professionally: ${scriptData.script}` }] }],
+        {
+          responseModalities: ['AUDIO'],
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } },
+          },
+        }
+      );
+
+      const base64Audio = audioResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      let audioUrl = '';
+      let audioDuration = 15;
+      if (base64Audio) {
+        const audioBlob = pcmToWav(base64Audio, 24000);
+        audioUrl = URL.createObjectURL(audioBlob);
+        const byteLength = atob(base64Audio).length;
+        audioDuration = byteLength / 48000;
+      }
+
+      setProject(prev => prev ? { ...prev, audioUrl, audioDuration, status: 'generating_video' } : null);
+      setLoadingMessage('Animating all scenes into cinematic video...');
+
+      // 4. Generate Videos for ALL frames via proxy (Veo 3.1 Fast)
+      const framesWithVideo: StoryboardFrame[] = [...updatedFrames];
+      for (let i = 0; i < framesWithVideo.length; i++) {
+        const frame = framesWithVideo[i];
+        setLoadingMessage(`Animating scene ${i + 1} of ${framesWithVideo.length}...`);
+
+        if (frame.imageUrl) {
+          try {
+            const base64Data = frame.imageUrl.split(',')[1]?.trim();
+            const videoUrl = await generateVeoVideo(
+              `${frame.imagePrompt}, ${stylePrompt}. ABSOLUTELY NO mention of sound, audio, talking, voices or music. Purely visual cinematic movement.`,
+              base64Data
+            );
+            framesWithVideo[i] = { ...frame, videoUrl };
+            setProject(prev => prev ? { ...prev, frames: [...framesWithVideo] } : null);
+          } catch (err: any) {
+            console.error(`Scene ${i + 1} video generation failed:`, err);
+            // Continue with remaining scenes
+          }
+        }
+      }
+
+      // 5. Stitch with FFmpeg
+      setProject(prev => prev ? { ...prev, status: 'stitching_video' } : null);
+      setLoadingMessage('Stitching final video with FFmpeg...');
+
+      try {
+        const ffmpeg = new FFmpeg();
+        const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+        await ffmpeg.load({
+          coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+          wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+        });
+
+        // Write audio
+        if (audioUrl) {
+          const audioData = await fetchFile(audioUrl);
+          await ffmpeg.writeFile('audio.wav', audioData);
+        }
+
+        // Write video files and prepare filter_complex
+        const inputArgs: string[] = [];
+        let filterComplex = '';
+        let vidCount = 0;
+
+        for (let i = 0; i < framesWithVideo.length; i++) {
+          const frame = framesWithVideo[i];
+          if (frame.videoUrl) {
+            const videoData = await fetchFile(frame.videoUrl);
+            const filename = `vid${vidCount}.mp4`;
+            await ffmpeg.writeFile(filename, videoData);
+            inputArgs.push('-i', filename);
+            filterComplex += `[${vidCount}:v]fps=30,scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,format=yuv420p[v${vidCount}];`;
+            vidCount++;
+          }
+        }
+
+        if (vidCount === 0) throw new Error("No video clips were generated to stitch.");
+
+        for (let i = 0; i < vidCount; i++) filterComplex += `[v${i}]`;
+        filterComplex += `concat=n=${vidCount}:v=1:a=0[outv]`;
+
+        const ffmpegArgs = [...inputArgs];
+        if (audioUrl) ffmpegArgs.push('-i', 'audio.wav');
+        ffmpegArgs.push('-filter_complex', filterComplex);
+        ffmpegArgs.push('-map', '[outv]');
+        if (audioUrl) ffmpegArgs.push('-map', `${vidCount}:a:0`);
+        ffmpegArgs.push('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28');
+        if (audioUrl) ffmpegArgs.push('-c:a', 'aac', '-shortest');
+        ffmpegArgs.push('output.mp4');
+
+        await ffmpeg.exec(ffmpegArgs);
+
+        const data = await ffmpeg.readFile('output.mp4');
+        const blob = new Blob([data], { type: 'video/mp4' });
+        const finalVideoUrl = URL.createObjectURL(blob);
+
+        setProject(prev => prev ? { ...prev, finalVideoUrl, status: 'completed' } : null);
+        setLoadingMessage('Video complete!');
+      } catch (ffmpegError: any) {
+        console.error("FFmpeg stitching failed:", ffmpegError);
+        setProject(prev => prev ? { ...prev, status: 'completed' } : null);
+        setLoadingMessage('Video complete (stitching skipped — download individual clips)!');
+      }
+    } catch (error: any) {
+      console.error(error);
+      setProject(prev => prev ? { ...prev, status: 'failed', error: error.message } : null);
+    }
+  };
+
+  // --- EXPORT ---
+  const exportVideo = async () => {
+    if (!project) return;
+    if (project.finalVideoUrl) {
+      const a = document.createElement('a');
+      a.href = project.finalVideoUrl;
+      a.download = `AuraDomoMuse-Short-${project.id}.mp4`;
+      a.click();
+      return;
+    }
+    // Fallback: re-stitch
+    if (!project.audioUrl) return;
+    setIsExporting(true);
+    setExportProgress(0);
+    setIsPlaying(false);
+    try {
+      const ffmpeg = new FFmpeg();
+      ffmpeg.on('progress', ({ progress }) => setExportProgress(Math.round(progress * 100)));
+      const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+      await ffmpeg.load({
+        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+      });
+      const audioData = await fetchFile(project.audioUrl);
+      await ffmpeg.writeFile('audio.wav', audioData);
+      let concatList = '';
+      for (let i = 0; i < project.frames.length; i++) {
+        const frame = project.frames[i];
+        if (frame.videoUrl) {
+          const videoData = await fetchFile(frame.videoUrl);
+          const filename = `vid${i}.mp4`;
+          await ffmpeg.writeFile(filename, videoData);
+          concatList += `file '${filename}'\n`;
+        }
+      }
+      await ffmpeg.writeFile('concat.txt', concatList);
+      await ffmpeg.exec(['-f', 'concat', '-safe', '0', '-i', 'concat.txt', '-c', 'copy', 'concatenated.mp4']);
+      await ffmpeg.exec(['-i', 'concatenated.mp4', '-i', 'audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-map', '0:v:0', '-map', '1:a:0', '-shortest', 'output.mp4']);
+      const data = await ffmpeg.readFile('output.mp4');
+      const blob = new Blob([data], { type: 'video/mp4' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `AuraDomoMuse-Short-${project.id}.mp4`;
+      a.click();
+    } catch (error) {
+      console.error("FFmpeg export failed:", error);
+    } finally {
+      setIsExporting(false);
+      setExportProgress(0);
+    }
+  };
+
+  // --- RENDER ---
+  return (
+    <div className="flex-1 h-full bg-[#050508] text-white overflow-y-auto custom-scrollbar">
+      <div className="min-h-screen flex flex-col items-center justify-start p-6 md:p-12 max-w-6xl mx-auto">
+        {/* Header */}
+        <header className="w-full flex justify-between items-center mb-12">
+          <div className="flex items-center gap-3">
+            <button onClick={onBack} className="text-gray-400 hover:text-white mr-4">
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+            </button>
+            <div className="w-10 h-10 bg-orange-500 rounded-xl flex items-center justify-center" style={{ boxShadow: '0 0 40px rgba(242,125,38,0.15)' }}>
+              <Video className="text-white w-6 h-6" />
             </div>
-        </div>
-    );
+            <h1 className="text-2xl font-bold tracking-tight">ShortsGen <span className="text-orange-500">AI</span></h1>
+          </div>
+        </header>
+
+        <main className="w-full grid grid-cols-1 lg:grid-cols-12 gap-8">
+          {/* Left Column */}
+          <div className="lg:col-span-5 flex flex-col gap-6">
+            <section className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8 flex flex-col gap-6">
+              <div className="space-y-2">
+                <h2 className="text-3xl font-bold">What's the idea?</h2>
+                <p className="text-white/50 text-sm">Describe your vision, and we'll handle the script, visuals, and voice.</p>
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-xs font-bold uppercase tracking-widest text-white/40">Visual Style</label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {styles.map((style) => (
+                    <button
+                      key={style.name}
+                      onClick={() => setSelectedStyle(style.name)}
+                      className={`px-3 py-2 rounded-xl text-[10px] font-bold transition-all border ${
+                        selectedStyle === style.name 
+                          ? 'bg-orange-500 border-orange-500 text-white' 
+                          : 'bg-white/5 border-white/10 text-white/40 hover:border-white/20'
+                      }`}
+                      style={selectedStyle === style.name ? { boxShadow: '0 0 40px rgba(242,125,38,0.15)' } : {}}
+                    >
+                      {style.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="relative">
+                <textarea 
+                  value={idea}
+                  onChange={(e) => setIdea(e.target.value)}
+                  placeholder="A futuristic city where cars fly and robots serve coffee..."
+                  className="w-full h-40 bg-white/5 border border-white/10 rounded-2xl p-4 text-white placeholder:text-white/20 focus:outline-none focus:border-orange-500/50 transition-all resize-none"
+                />
+                <div className="absolute bottom-4 right-4 flex gap-2">
+                  <button 
+                    onClick={startVoiceInput}
+                    className={`p-3 rounded-full transition-all ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-white/10 hover:bg-white/20'}`}
+                    title="Talk your idea"
+                  >
+                    <Mic size={20} />
+                  </button>
+                </div>
+              </div>
+
+              <button 
+                onClick={generateVideo}
+                disabled={!idea.trim() || (project?.status !== 'idle' && project?.status !== 'completed' && project?.status !== 'failed' && !!project)}
+                className="w-full py-4 bg-orange-500 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold rounded-2xl flex items-center justify-center gap-2 transition-all"
+                style={{ boxShadow: '0 0 40px rgba(242,125,38,0.15)' }}
+              >
+                {project?.status && project.status !== 'idle' && project.status !== 'completed' && project.status !== 'failed' ? (
+                  <Loader2 className="animate-spin" />
+                ) : (
+                  <Sparkles size={20} />
+                )}
+                {project?.status === 'completed' ? 'Generate Another' : 'Create Magic'}
+              </button>
+            </section>
+
+            {/* Status */}
+            <AnimatePresence>
+              {project && project.status !== 'idle' && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-6 space-y-4"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-white/60">Current Status</span>
+                    <span className="text-xs px-2 py-1 rounded-full bg-white/10 uppercase tracking-widest">{project.status.replace(/_/g, ' ')}</span>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <div className="h-2 w-full bg-white/5 rounded-full overflow-hidden">
+                      <motion.div 
+                        className="h-full bg-orange-500"
+                        initial={{ width: "0%" }}
+                        animate={{ 
+                          width: project.status === 'completed' ? "100%" : 
+                                 project.status === 'stitching_video' ? "90%" :
+                                 project.status === 'generating_video' ? "75%" :
+                                 project.status === 'generating_audio' ? "50%" :
+                                 project.status === 'generating_images' ? "25%" :
+                                 project.status === 'generating_script' ? "10%" : "0%"
+                        }}
+                      />
+                    </div>
+                    <p className="text-sm italic text-white/40 text-center">{loadingMessage}</p>
+                  </div>
+
+                  {project.status === 'failed' && (
+                    <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start gap-3">
+                      <AlertCircle className="text-red-500 shrink-0" size={20} />
+                      <p className="text-xs text-red-400">{project.error}</p>
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Right Column */}
+          <div className="lg:col-span-7 space-y-8">
+            {project ? (
+              <div className="space-y-8">
+                {/* Final Video Player */}
+                {project.status === 'completed' && (
+                  <section className="space-y-4">
+                    <div className="flex items-center gap-2 text-orange-500">
+                      <Play size={20} />
+                      <h3 className="font-bold uppercase tracking-widest text-sm">Final Video Preview</h3>
+                    </div>
+                    <div className="relative aspect-[9/16] max-w-[340px] mx-auto bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl overflow-hidden shadow-2xl">
+                      {project.finalVideoUrl ? (
+                        <video src={project.finalVideoUrl} controls autoPlay className="w-full h-full object-cover" />
+                      ) : (
+                        <>
+                          <AnimatePresence mode="wait">
+                            <motion.div key={currentFrameIdx} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.8 }} className="absolute inset-0">
+                              {project.frames[currentFrameIdx]?.videoUrl ? (
+                                <video ref={previewVideoRef} src={project.frames[currentFrameIdx].videoUrl} autoPlay loop muted playsInline className="w-full h-full object-cover" />
+                              ) : (
+                                <img src={project.frames[currentFrameIdx]?.imageUrl} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                              )}
+                            </motion.div>
+                          </AnimatePresence>
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent flex flex-col justify-end p-6 pointer-events-none">
+                            <p className="text-sm font-medium leading-relaxed drop-shadow-lg">{project.frames[currentFrameIdx]?.scriptPart}</p>
+                          </div>
+                          <button onClick={togglePlay} className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 hover:opacity-100 transition-opacity">
+                            <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center">
+                              {isPlaying ? <RefreshCw className="animate-spin" /> : <Play fill="white" />}
+                            </div>
+                            {project.audioUrl && (
+                              <div className="absolute bottom-4 right-4 p-2 bg-black/40 backdrop-blur-md rounded-full text-white/60"><Volume2 size={16} /></div>
+                            )}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                    {!project.finalVideoUrl && (
+                      <audio ref={audioRef} src={project.audioUrl} onEnded={() => setIsPlaying(false)} className="hidden" controls={false} muted={false} />
+                    )}
+                    <div className="flex flex-col items-center gap-4">
+                      <div className="flex flex-wrap justify-center gap-4">
+                        {!project.finalVideoUrl && (
+                          <button onClick={togglePlay} className="px-8 py-3 bg-white text-black font-bold rounded-full flex items-center gap-2 hover:bg-orange-500 hover:text-white transition-all shadow-lg">
+                            {isPlaying ? 'Pause Preview' : 'Play Preview'}
+                          </button>
+                        )}
+                        <button 
+                          onClick={exportVideo}
+                          disabled={isExporting}
+                          className="px-8 py-3 bg-orange-600 text-white font-bold rounded-full flex items-center gap-2 hover:bg-orange-700 transition-all disabled:opacity-50 shadow-lg"
+                          style={{ boxShadow: '0 0 40px rgba(242,125,38,0.15)' }}
+                        >
+                          {isExporting ? (<><Loader2 className="animate-spin" size={20} /> Exporting {exportProgress}%</>) : (<><Download size={20} /> Download Full MP4</>)}
+                        </button>
+                      </div>
+                    </div>
+                  </section>
+                )}
+
+                {/* Script */}
+                <section className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8 space-y-4">
+                  <div className="flex items-center gap-2 text-orange-500">
+                    <Type size={20} />
+                    <h3 className="font-bold uppercase tracking-widest text-sm">The Script</h3>
+                  </div>
+                  <p className="text-lg leading-relaxed text-white/80 italic">
+                    "{project.script || 'Generating script...'}"
+                  </p>
+                </section>
+
+                {/* Storyboard */}
+                <section className="space-y-4">
+                  <div className="flex items-center gap-2 text-blue-500">
+                    <ImageIcon size={20} />
+                    <h3 className="font-bold uppercase tracking-widest text-sm">Storyboard Clips</h3>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {project.frames.map((frame, idx) => (
+                      <motion.div key={frame.id} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="group relative aspect-[9/16] bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden">
+                        {frame.videoUrl ? (
+                          <video src={frame.videoUrl} autoPlay loop muted playsInline className="w-full h-full object-cover" />
+                        ) : frame.imageUrl ? (
+                          <div className="relative w-full h-full">
+                            <img src={frame.imageUrl} alt={frame.scriptPart} className="w-full h-full object-cover opacity-50" referrerPolicy="no-referrer" />
+                            <div className="absolute inset-0 flex items-center justify-center"><Loader2 className="animate-spin text-white/20" /></div>
+                          </div>
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-white/5 animate-pulse"><ImageIcon className="text-white/10" size={32} /></div>
+                        )}
+                        <div className="absolute top-2 left-2 bg-black/60 px-2 py-1 rounded text-[10px] font-bold">SCENE {idx + 1}</div>
+                      </motion.div>
+                    ))}
+                  </div>
+                </section>
+              </div>
+            ) : (
+              <div className="h-full min-h-[600px] bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl border-dashed flex flex-col items-center justify-center p-12 text-center space-y-6">
+                <div className="w-20 h-20 rounded-full bg-white/5 flex items-center justify-center">
+                  <Video className="text-white/20" size={40} />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-2xl font-bold">Your masterpiece awaits</h3>
+                  <p className="text-white/40 max-w-md">Enter an idea on the left to start generating your viral short-form video.</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </main>
+
+        <footer className="mt-20 w-full pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4 text-white/30 text-xs">
+          <p>Powered by Nano Banana 2, Veo 3.1 & Gemini 3.1.</p>
+        </footer>
+      </div>
+    </div>
+  );
 };
 
 export default SocialVideoGenerator;
