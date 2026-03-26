@@ -11,8 +11,6 @@ import {
   Image as ImageIcon, Type, Volume2, RefreshCw, Download
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { FFmpeg } from '@ffmpeg/ffmpeg';
-import { fetchFile, toBlobURL } from '@ffmpeg/util';
 
 // --- Types ---
 type VideoStatus = 'idle' | 'generating_script' | 'generating_images' | 'generating_video' | 'generating_audio' | 'stitching_video' | 'completed' | 'failed';
@@ -262,91 +260,23 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
         }
       }
 
-      // 5. Stitch with FFmpeg — Simple concat + audio mix (WASM-safe, no re-encoding)
+      // 5. Stitch with Canvas + MediaRecorder (native browser APIs, no WASM)
       setProject(prev => prev ? { ...prev, status: 'stitching_video' } : null);
-      setLoadingMessage('Loading FFmpeg engine...');
+      setLoadingMessage('Stitching final video...');
 
       try {
-        const ffmpeg = new FFmpeg();
-        let lastLog = '';
-        ffmpeg.on('log', ({ message }) => { lastLog = message; console.log('FFmpeg:', message); });
+        const clipsToStitch = framesWithVideo.filter(f => f.videoUrl);
+        if (clipsToStitch.length === 0) throw new Error("No video clips to stitch.");
 
-        const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
-        await ffmpeg.load({
-          coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-          wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-        });
-
-        // Write all video clips
-        setLoadingMessage('Preparing video clips...');
-        let concatList = '';
-        let vidCount = 0;
-        for (let i = 0; i < framesWithVideo.length; i++) {
-          const frame = framesWithVideo[i];
-          if (frame.videoUrl) {
-            const videoData = await fetchFile(frame.videoUrl);
-            const filename = `vid${vidCount}.mp4`;
-            await ffmpeg.writeFile(filename, videoData);
-            concatList += `file '${filename}'\n`;
-            vidCount++;
-          }
-        }
-
-        if (vidCount === 0) throw new Error("No video clips were generated to stitch.");
-        await ffmpeg.writeFile('concat.txt', concatList);
-
-        // STEP A: Concatenate clips (stream copy — fast, no re-encoding)
-        setLoadingMessage('Concatenating scenes...');
-        await ffmpeg.exec([
-          '-f', 'concat', '-safe', '0', '-i', 'concat.txt',
-          '-c', 'copy', '-an',
-          'silent.mp4'
-        ]);
-
-        let finalFile = 'silent.mp4';
-
-        // STEP B: Mix voiceover audio
-        if (audioUrl) {
-          setLoadingMessage('Mixing voiceover audio...');
-          const audioData = await fetchFile(audioUrl);
-          await ffmpeg.writeFile('audio.wav', audioData);
-
-          const mixResult = await ffmpeg.exec([
-            '-i', 'silent.mp4',
-            '-i', 'audio.wav',
-            '-c:v', 'copy',
-            '-c:a', 'aac', '-b:a', '128k',
-            '-map', '0:v:0', '-map', '1:a:0',
-            '-shortest',
-            'final.mp4'
-          ]);
-
-          if (mixResult === 0) {
-            finalFile = 'final.mp4';
-          } else {
-            console.warn('Audio mix failed, using silent video. Last log:', lastLog);
-          }
-        }
-
-        setLoadingMessage('Preparing download...');
-        const data = await ffmpeg.readFile(finalFile);
-        const blob = new Blob([new Uint8Array(data as any)], { type: 'video/mp4' });
-        const finalVideoUrl = URL.createObjectURL(blob);
-
+        const finalVideoUrl = await stitchWithMediaRecorder(clipsToStitch, audioUrl);
         setProject(prev => prev ? { ...prev, finalVideoUrl, status: 'completed' } : null);
         setLoadingMessage('Video complete!');
 
         // Auto-trigger download
-        const a = document.createElement('a');
-        a.href = finalVideoUrl;
-        a.download = 'AuraDomoMuse-Short.mp4';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        triggerDownload(finalVideoUrl, 'AuraDomoMuse-Short.mp4');
 
-      } catch (ffmpegError: any) {
-        console.error("FFmpeg stitching failed:", ffmpegError?.message || ffmpegError, 'Last log:', ffmpegError);
-        // Still mark as completed so user can access individual clips
+      } catch (stitchError: any) {
+        console.error("Stitching failed:", stitchError);
         setProject(prev => prev ? { ...prev, status: 'completed' } : null);
         setLoadingMessage('Stitching skipped — download individual clips below.');
       }
@@ -356,88 +286,189 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
     }
   };
 
+  // --- Canvas + MediaRecorder video stitcher (no WASM needed) ---
+  const stitchWithMediaRecorder = async (
+    clips: StoryboardFrame[],
+    voiceoverUrl?: string
+  ): Promise<string> => {
+    return new Promise(async (resolve, reject) => {
+      try {
+        // Create off-screen canvas
+        const canvas = document.createElement('canvas');
+        canvas.width = 720;
+        canvas.height = 1280;
+        const ctx = canvas.getContext('2d')!;
+        ctx.fillStyle = 'black';
+        ctx.fillRect(0, 0, 720, 1280);
+
+        // Capture canvas stream at 30fps
+        const canvasStream = canvas.captureStream(30);
+
+        // Set up audio if available
+        let audioElement: HTMLAudioElement | null = null;
+        if (voiceoverUrl) {
+          audioElement = new Audio(voiceoverUrl);
+          audioElement.crossOrigin = 'anonymous';
+          try {
+            const audioCtx = new AudioContext();
+            const source = audioCtx.createMediaElementSource(audioElement);
+            const dest = audioCtx.createMediaStreamDestination();
+            source.connect(dest);
+            source.connect(audioCtx.destination); // also hear it
+            // Add audio track to the canvas stream
+            dest.stream.getAudioTracks().forEach(track => canvasStream.addTrack(track));
+          } catch (audioErr) {
+            console.warn('Audio mixing not supported, recording without audio:', audioErr);
+            audioElement = null;
+          }
+        }
+
+        // Determine best MIME type
+        const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') 
+          ? 'video/webm;codecs=vp9,opus'
+          : MediaRecorder.isTypeSupported('video/webm;codecs=vp8,opus')
+            ? 'video/webm;codecs=vp8,opus'
+            : 'video/webm';
+
+        const recorder = new MediaRecorder(canvasStream, { mimeType, videoBitsPerSecond: 5_000_000 });
+        const chunks: Blob[] = [];
+        recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+
+        recorder.onstop = () => {
+          const blob = new Blob(chunks, { type: 'video/webm' });
+          const url = URL.createObjectURL(blob);
+          resolve(url);
+        };
+
+        recorder.onerror = (e) => reject(new Error('MediaRecorder error: ' + e));
+
+        // Start recording
+        recorder.start(100); // collect data every 100ms
+
+        // Start audio playback
+        if (audioElement) {
+          audioElement.currentTime = 0;
+          audioElement.play().catch(() => {});
+        }
+
+        // Play each clip sequentially on the canvas
+        for (let i = 0; i < clips.length; i++) {
+          setLoadingMessage(`Recording scene ${i + 1} of ${clips.length}...`);
+          await playClipOnCanvas(clips[i].videoUrl!, ctx, canvas);
+        }
+
+        // Stop audio and recorder
+        if (audioElement) {
+          audioElement.pause();
+        }
+
+        // Small delay to flush remaining frames
+        await new Promise(r => setTimeout(r, 300));
+        recorder.stop();
+
+      } catch (err) {
+        reject(err);
+      }
+    });
+  };
+
+  // --- Play a single video clip onto canvas ---
+  const playClipOnCanvas = (videoUrl: string, ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement): Promise<void> => {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement('video');
+      video.src = videoUrl;
+      video.muted = true; // mute individual clips (audio comes from the voiceover)
+      video.playsInline = true;
+      video.crossOrigin = 'anonymous';
+
+      video.onloadeddata = () => {
+        video.play().catch(reject);
+
+        const drawFrame = () => {
+          if (video.ended || video.paused) {
+            resolve();
+            return;
+          }
+          // Draw video frame centered/covered on canvas
+          const vw = video.videoWidth;
+          const vh = video.videoHeight;
+          const cw = canvas.width;
+          const ch = canvas.height;
+          const scale = Math.max(cw / vw, ch / vh);
+          const sw = vw * scale;
+          const sh = vh * scale;
+          const dx = (cw - sw) / 2;
+          const dy = (ch - sh) / 2;
+
+          ctx.fillStyle = 'black';
+          ctx.fillRect(0, 0, cw, ch);
+          ctx.drawImage(video, dx, dy, sw, sh);
+          requestAnimationFrame(drawFrame);
+        };
+        requestAnimationFrame(drawFrame);
+      };
+
+      video.onerror = () => reject(new Error(`Failed to load clip: ${videoUrl}`));
+
+      // Timeout safety net: if clip hangs for 30s, skip it
+      const timeout = setTimeout(() => {
+        video.pause();
+        resolve();
+      }, 30000);
+
+      video.onended = () => {
+        clearTimeout(timeout);
+        resolve();
+      };
+    });
+  };
+
   // --- EXPORT / DOWNLOAD ---
   const exportVideo = async () => {
     if (!project) return;
 
-    // If we already have a final stitched video, download it immediately
     if (project.finalVideoUrl) {
-      const a = document.createElement('a');
-      a.href = project.finalVideoUrl;
-      a.download = `AuraDomoMuse-Short-${project.id}.mp4`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      triggerDownload(project.finalVideoUrl, `AuraDomoMuse-Short-${project.id}.webm`);
       return;
     }
 
-    // Fallback: re-stitch using simple -c copy (WASM-safe)
+    // Re-stitch using MediaRecorder
     setIsExporting(true);
     setExportProgress(0);
     setIsPlaying(false);
     try {
-      const ffmpeg = new FFmpeg();
-      ffmpeg.on('progress', ({ progress }) => setExportProgress(Math.round(progress * 100)));
-      const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
-      await ffmpeg.load({
-        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-      });
-
-      let concatList = '';
-      for (let i = 0; i < project.frames.length; i++) {
-        if (project.frames[i].videoUrl) {
-          const videoData = await fetchFile(project.frames[i].videoUrl!);
-          await ffmpeg.writeFile(`vid${i}.mp4`, videoData);
-          concatList += `file 'vid${i}.mp4'\n`;
-        }
+      const clips = project.frames.filter(f => f.videoUrl);
+      if (clips.length === 0) {
+        alert("No video clips available to export.");
+        return;
       }
-      await ffmpeg.writeFile('concat.txt', concatList);
-
-      // Concat with stream copy
-      await ffmpeg.exec(['-f', 'concat', '-safe', '0', '-i', 'concat.txt', '-c', 'copy', '-an', 'silent.mp4']);
-
-      let finalFile = 'silent.mp4';
-      if (project.audioUrl) {
-        const audioData = await fetchFile(project.audioUrl);
-        await ffmpeg.writeFile('audio.wav', audioData);
-        const mixResult = await ffmpeg.exec([
-          '-i', 'silent.mp4', '-i', 'audio.wav',
-          '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k',
-          '-map', '0:v:0', '-map', '1:a:0', '-shortest', 'final.mp4'
-        ]);
-        if (mixResult === 0) finalFile = 'final.mp4';
-      }
-
-      const data = await ffmpeg.readFile(finalFile);
-      const blob = new Blob([new Uint8Array(data as any)], { type: 'video/mp4' });
-      const url = URL.createObjectURL(blob);
-
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `AuraDomoMuse-Short-${project.id}.mp4`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-
+      setExportProgress(10);
+      const url = await stitchWithMediaRecorder(clips, project.audioUrl);
+      setExportProgress(90);
+      triggerDownload(url, `AuraDomoMuse-Short-${project.id}.webm`);
       setProject(prev => prev ? { ...prev, finalVideoUrl: url } : null);
+      setExportProgress(100);
     } catch (error) {
-      console.error("FFmpeg export failed:", error);
-      alert("FFmpeg failed. Use the individual clip download buttons instead.");
+      console.error("Export failed:", error);
+      alert("Export failed. Download individual clips instead.");
     } finally {
       setIsExporting(false);
       setExportProgress(0);
     }
   };
 
-  // --- Download individual clip ---
-  const downloadClip = (url: string, name: string) => {
+  // --- Helpers ---
+  const triggerDownload = (url: string, filename: string) => {
     const a = document.createElement('a');
     a.href = url;
-    a.download = name;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
+  };
+
+  const downloadClip = (url: string, name: string) => {
+    triggerDownload(url, name);
   };
 
   // --- RENDER ---
