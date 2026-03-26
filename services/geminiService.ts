@@ -8,7 +8,7 @@ import { supabase } from './supabaseClient';
 
 declare global {
   interface Window {
-    aistudio?: {
+    aistudio: {
       hasSelectedApiKey: () => Promise<boolean>;
     };
   }
@@ -526,7 +526,7 @@ export const generateVeoVideo = async (prompt: string, imageBase64?: string): Pr
     }
   }
 
-  const modelId = 'veo-3.1-fast-generate-preview';
+  const modelId = 'veo-3.1-generate-preview';
 
   try {
     // NOTE: Veo might require specialized handling or a different endpoint in the future.

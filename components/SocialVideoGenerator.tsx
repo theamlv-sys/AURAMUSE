@@ -22,6 +22,7 @@ interface StoryboardFrame {
   imagePrompt: string;
   imageUrl?: string;
   videoUrl?: string;
+  videoBlob?: Blob;
   scriptPart: string;
 }
 
@@ -253,10 +254,14 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
               `${frame.imagePrompt}, ${stylePrompt}. ABSOLUTELY NO mention of sound, audio, talking, voices or music. Purely visual cinematic movement.`,
               base64Data
             );
-            framesWithVideo[i] = { ...frame, videoUrl };
+            
+            // Critical: Fetch blob for FFmpeg stability
+            const videoBlob = await fetch(videoUrl).then(r => r.blob());
+            framesWithVideo[i] = { ...frame, videoUrl, videoBlob: videoBlob as any };
             setProject(prev => prev ? { ...prev, frames: [...framesWithVideo] } : null);
           } catch (err: any) {
             console.error(`Scene ${i + 1} video generation failed:`, err);
+            setLoadingMessage(`Scene ${i + 1} animation failed, skipping...`);
             // Continue with remaining scenes
           }
         }
