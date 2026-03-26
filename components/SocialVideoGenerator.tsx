@@ -22,7 +22,6 @@ interface StoryboardFrame {
   imagePrompt: string;
   imageUrl?: string;
   videoUrl?: string;
-  videoBlob?: Blob;
   scriptPart: string;
 }
 
@@ -243,7 +242,6 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
 
       // 4. Generate Videos for ALL frames via proxy (Veo 3.1 Fast)
       const framesWithVideo: StoryboardFrame[] = [...updatedFrames];
-      let videoErrors: string[] = [];
       for (let i = 0; i < framesWithVideo.length; i++) {
         const frame = framesWithVideo[i];
         setLoadingMessage(`Animating scene ${i + 1} of ${framesWithVideo.length}...`);
@@ -255,23 +253,16 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
               `${frame.imagePrompt}, ${stylePrompt}. ABSOLUTELY NO mention of sound, audio, talking, voices or music. Purely visual cinematic movement.`,
               base64Data
             );
-            // Fetch the blob from the blob URL so FFmpeg can access it later
-            const videoBlob = await fetch(videoUrl).then(r => r.blob());
-            framesWithVideo[i] = { ...frame, videoUrl, videoBlob };
+            framesWithVideo[i] = { ...frame, videoUrl };
             setProject(prev => prev ? { ...prev, frames: [...framesWithVideo] } : null);
           } catch (err: any) {
-            const errMsg = err?.message || String(err);
-            console.error(`Scene ${i + 1} video generation failed:`, errMsg);
-            videoErrors.push(`Scene ${i + 1}: ${errMsg}`);
-            setLoadingMessage(`Scene ${i + 1} failed (${errMsg.substring(0, 60)}...), continuing...`);
+            console.error(`Scene ${i + 1} video generation failed:`, err);
+            // Continue with remaining scenes
           }
         }
       }
-      if (videoErrors.length > 0) {
-        console.warn('Video generation errors:', videoErrors);
-      }
 
-      // 5. Stitch with FFmpeg — Simple concat + audio mix (WASM-safe, no re-encoding)
+      // 5. Stitch with FFmpeg — Using proven 2-step VoiceToMovie approach
       setProject(prev => prev ? { ...prev, status: 'stitching_video' } : null);
       setLoadingMessage('Loading FFmpeg engine...');
 
@@ -286,64 +277,63 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
           wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
         });
 
-        // Write all video clips — use stored blobs directly (blob URLs can fail with fetchFile)
+        // — STEP 5a: Write all video clips and build concat list —
         setLoadingMessage('Preparing video clips...');
         let concatList = '';
         let vidCount = 0;
         for (let i = 0; i < framesWithVideo.length; i++) {
           const frame = framesWithVideo[i];
-          if (frame.videoBlob) {
-            const arrayBuf = await frame.videoBlob.arrayBuffer();
+          if (frame.videoUrl) {
+            const videoData = await fetchFile(frame.videoUrl);
             const filename = `vid${vidCount}.mp4`;
-            await ffmpeg.writeFile(filename, new Uint8Array(arrayBuf));
+            await ffmpeg.writeFile(filename, videoData);
             concatList += `file '${filename}'\n`;
             vidCount++;
-          } else if (frame.videoUrl) {
-            try {
-              const videoData = await fetchFile(frame.videoUrl);
-              const filename = `vid${vidCount}.mp4`;
-              await ffmpeg.writeFile(filename, videoData);
-              concatList += `file '${filename}'\n`;
-              vidCount++;
-            } catch (e) {
-              console.warn(`Failed to fetch video ${i}:`, e);
-            }
           }
         }
 
         if (vidCount === 0) throw new Error("No video clips were generated to stitch.");
+
         await ffmpeg.writeFile('concat.txt', concatList);
 
-        // STEP A: Concatenate clips (stream copy — fast, no re-encoding)
-        setLoadingMessage('Concatenating scenes...');
-        await ffmpeg.exec([
+        // — STEP 5b: Concatenate + normalize all clips into one silent video —
+        // Matches VoiceToMovie: scale to 1080x1920, pad black bars, normalize fps, strip audio
+        setLoadingMessage('Normalizing and concatenating all scenes...');
+        const concatCode = await ffmpeg.exec([
           '-f', 'concat', '-safe', '0', '-i', 'concat.txt',
-          '-c', 'copy', '-an',
-          'silent.mp4'
+          '-vf', 'scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30',
+          '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
+          '-an',
+          'temp-concat.mp4'
         ]);
 
-        let finalFile = 'silent.mp4';
+        if (concatCode !== 0) throw new Error(`Concat failed (code ${concatCode}). ${lastLog}`);
 
-        // STEP B: Mix voiceover audio
+        // — STEP 5c: Mix voiceover audio into the concatenated video —
+        let finalFile = 'temp-concat.mp4';
+
         if (audioUrl) {
           setLoadingMessage('Mixing voiceover audio...');
           const audioData = await fetchFile(audioUrl);
           await ffmpeg.writeFile('audio.wav', audioData);
 
-          const mixResult = await ffmpeg.exec([
-            '-i', 'silent.mp4',
+          // Use apad to pad audio with silence if voiceover is shorter than video
+          const mixCode = await ffmpeg.exec([
+            '-i', 'temp-concat.mp4',
             '-i', 'audio.wav',
+            '-filter_complex', '[1:a]apad[a]',
+            '-map', '0:v', '-map', '[a]',
             '-c:v', 'copy',
             '-c:a', 'aac', '-b:a', '128k',
-            '-map', '0:v:0', '-map', '1:a:0',
             '-shortest',
-            'final.mp4'
+            'final-output.mp4'
           ]);
 
-          if (mixResult === 0) {
-            finalFile = 'final.mp4';
+          if (mixCode !== 0) {
+            console.warn(`Audio mix failed (code ${mixCode}), using silent video. ${lastLog}`);
+            // Fall back to silent video
           } else {
-            console.warn('Audio mix failed, using silent video. Last log:', lastLog);
+            finalFile = 'final-output.mp4';
           }
         }
 
@@ -355,19 +345,19 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
         setProject(prev => prev ? { ...prev, finalVideoUrl, status: 'completed' } : null);
         setLoadingMessage('Video complete!');
 
-        // Auto-trigger download
-        const a = document.createElement('a');
-        a.href = finalVideoUrl;
-        a.download = 'AuraDomoMuse-Short.mp4';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        // Cleanup
+        try {
+          for (let i = 0; i < vidCount; i++) await ffmpeg.deleteFile(`vid${i}.mp4`);
+          await ffmpeg.deleteFile('concat.txt');
+          await ffmpeg.deleteFile('temp-concat.mp4');
+          if (audioUrl) await ffmpeg.deleteFile('audio.wav');
+          if (finalFile === 'final-output.mp4') await ffmpeg.deleteFile('final-output.mp4');
+        } catch(_) {}
 
       } catch (ffmpegError: any) {
-        console.error("FFmpeg stitching failed:", ffmpegError?.message || ffmpegError, 'Last log:', ffmpegError);
-        // Still mark as completed so user can access individual clips
+        console.error("FFmpeg stitching failed:", ffmpegError);
         setProject(prev => prev ? { ...prev, status: 'completed' } : null);
-        setLoadingMessage('Stitching skipped — download individual clips below.');
+        setLoadingMessage('Video complete (stitching skipped — play preview or download clips)!');
       }
     } catch (error: any) {
       console.error(error);
@@ -390,7 +380,7 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
       return;
     }
 
-    // Fallback: re-stitch using simple -c copy (WASM-safe)
+    // Fallback: re-stitch using the same 2-step VoiceToMovie approach
     setIsExporting(true);
     setExportProgress(0);
     setIsPlaying(false);
@@ -403,45 +393,47 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
         wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
       });
 
+      // Step 1: Write clips and concat list
       let concatList = '';
       for (let i = 0; i < project.frames.length; i++) {
         const frame = project.frames[i];
-        if (frame.videoBlob) {
-          const arrayBuf = await frame.videoBlob.arrayBuffer();
-          const filename = `vid${i}.mp4`;
-          await ffmpeg.writeFile(filename, new Uint8Array(arrayBuf));
-          concatList += `file '${filename}'\n`;
-        } else if (frame.videoUrl) {
-          try {
-            const videoData = await fetchFile(frame.videoUrl);
-            await ffmpeg.writeFile(`vid${i}.mp4`, videoData);
-            concatList += `file 'vid${i}.mp4'\n`;
-          } catch (e) {
-            console.warn(`Export: Failed to fetch video ${i}`, e);
-          }
+        if (frame.videoUrl) {
+          const videoData = await fetchFile(frame.videoUrl);
+          await ffmpeg.writeFile(`vid${i}.mp4`, videoData);
+          concatList += `file 'vid${i}.mp4'\n`;
         }
       }
       await ffmpeg.writeFile('concat.txt', concatList);
 
-      // Concat with stream copy
-      await ffmpeg.exec(['-f', 'concat', '-safe', '0', '-i', 'concat.txt', '-c', 'copy', '-an', 'silent.mp4']);
+      // Step 2: Concat + normalize
+      await ffmpeg.exec([
+        '-f', 'concat', '-safe', '0', '-i', 'concat.txt',
+        '-vf', 'scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30',
+        '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
+        '-an', 'temp-concat.mp4'
+      ]);
 
-      let finalFile = 'silent.mp4';
+      let finalFile = 'temp-concat.mp4';
+
+      // Step 3: Mix audio if available
       if (project.audioUrl) {
         const audioData = await fetchFile(project.audioUrl);
         await ffmpeg.writeFile('audio.wav', audioData);
-        const mixResult = await ffmpeg.exec([
-          '-i', 'silent.mp4', '-i', 'audio.wav',
+        await ffmpeg.exec([
+          '-i', 'temp-concat.mp4', '-i', 'audio.wav',
+          '-filter_complex', '[1:a]apad[a]',
+          '-map', '0:v', '-map', '[a]',
           '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k',
-          '-map', '0:v:0', '-map', '1:a:0', '-shortest', 'final.mp4'
+          '-shortest', 'final-output.mp4'
         ]);
-        if (mixResult === 0) finalFile = 'final.mp4';
+        finalFile = 'final-output.mp4';
       }
 
       const data = await ffmpeg.readFile(finalFile);
       const blob = new Blob([new Uint8Array(data as any)], { type: 'video/mp4' });
       const url = URL.createObjectURL(blob);
 
+      // Trigger download
       const a = document.createElement('a');
       a.href = url;
       a.download = `AuraDomoMuse-Short-${project.id}.mp4`;
@@ -449,33 +441,15 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
       a.click();
       document.body.removeChild(a);
 
+      // Also save for replay
       setProject(prev => prev ? { ...prev, finalVideoUrl: url } : null);
+
     } catch (error) {
       console.error("FFmpeg export failed:", error);
-      alert("FFmpeg failed. Use the individual clip download buttons instead.");
+      alert("Export failed. Check console for details.");
     } finally {
       setIsExporting(false);
       setExportProgress(0);
-    }
-  };
-
-  // --- Download individual clip (handles cross-origin URLs) ---
-  const downloadClip = async (url: string, name: string) => {
-    try {
-      // Fetch as blob to handle cross-origin URLs
-      const response = await fetch(url);
-      const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = blobUrl;
-      a.download = name;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-    } catch {
-      // Fallback: open in new tab
-      window.open(url, '_blank');
     }
   };
 
@@ -676,16 +650,9 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
 
                 {/* Storyboard */}
                 <section className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-blue-500">
-                      <ImageIcon size={20} />
-                      <h3 className="font-bold uppercase tracking-widest text-sm">Storyboard Clips</h3>
-                    </div>
-                    {project.audioUrl && (
-                      <button onClick={() => downloadClip(project.audioUrl!, `voiceover-${project.id}.wav`)} className="text-xs px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-full flex items-center gap-1.5 transition-all">
-                        <Volume2 size={12} /> Download Audio
-                      </button>
-                    )}
+                  <div className="flex items-center gap-2 text-blue-500">
+                    <ImageIcon size={20} />
+                    <h3 className="font-bold uppercase tracking-widest text-sm">Storyboard Clips</h3>
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     {project.frames.map((frame, idx) => (
@@ -694,28 +661,13 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
                           <video src={frame.videoUrl} autoPlay loop muted playsInline className="w-full h-full object-cover" />
                         ) : frame.imageUrl ? (
                           <div className="relative w-full h-full">
-                            <img src={frame.imageUrl} alt={frame.scriptPart} className={`w-full h-full object-cover ${project.status === 'generating_images' ? 'opacity-50' : 'opacity-100'}`} referrerPolicy="no-referrer" />
-                            {(project.status === 'generating_images' || project.status === 'generating_video') && (
-                              <div className="absolute inset-0 flex items-center justify-center"><Loader2 className="animate-spin text-white/40" /></div>
-                            )}
+                            <img src={frame.imageUrl} alt={frame.scriptPart} className="w-full h-full object-cover opacity-50" referrerPolicy="no-referrer" />
+                            <div className="absolute inset-0 flex items-center justify-center"><Loader2 className="animate-spin text-white/20" /></div>
                           </div>
                         ) : (
                           <div className="w-full h-full flex items-center justify-center bg-white/5 animate-pulse"><ImageIcon className="text-white/10" size={32} /></div>
                         )}
                         <div className="absolute top-2 left-2 bg-black/60 px-2 py-1 rounded text-[10px] font-bold">SCENE {idx + 1}</div>
-                        {/* Download button for individual clip */}
-                        {(frame.videoUrl || frame.imageUrl) && (
-                          <button
-                            onClick={() => downloadClip(
-                              frame.videoUrl || frame.imageUrl!,
-                              `scene-${idx + 1}-${project.id}.${frame.videoUrl ? 'mp4' : 'png'}`
-                            )}
-                            className="absolute bottom-2 right-2 p-2 bg-black/60 hover:bg-orange-500 rounded-full opacity-0 group-hover:opacity-100 transition-all"
-                            title={`Download Scene ${idx + 1}`}
-                          >
-                            <Download size={14} />
-                          </button>
-                        )}
                       </motion.div>
                     ))}
                   </div>
