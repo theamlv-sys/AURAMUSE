@@ -69,21 +69,7 @@ function pcmToWav(pcmBase64: string, sampleRate: number = 24000): Blob {
   return new Blob([buffer], { type: 'audio/wav' });
 }
 
-// --- Force-download a blob ---
-function forceDownloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.style.display = 'none';
-  document.body.appendChild(a);
-  a.click();
-  // Small delay before cleanup so browser can start the download
-  setTimeout(() => {
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, 1000);
-}
+
 
 // --- Styles ---
 const styles = [
@@ -110,8 +96,6 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
   const [isRecording, setIsRecording] = useState(false);
   const [project, setProject] = useState<VideoProject | null>(null);
   const [loadingMessage, setLoadingMessage] = useState('');
-  const [isExporting, setIsExporting] = useState(false);
-  const [exportProgress, setExportProgress] = useState(0);
   const [currentFrameIdx, setCurrentFrameIdx] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
 
@@ -364,10 +348,7 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
         const finalVideoUrl = URL.createObjectURL(finalBlob);
 
         setProject(prev => prev ? { ...prev, finalVideoUrl, finalVideoBlob: finalBlob, status: 'completed' } : null);
-        setLoadingMessage('Video complete! Downloading...');
-
-        // Auto-download
-        forceDownloadBlob(finalBlob, 'AuraDomoMuse-Short.mp4');
+        setLoadingMessage('Video complete! Click Download to save.');
 
       } catch (ffmpegError: any) {
         console.error("FFmpeg failed:", ffmpegError);
@@ -380,124 +361,7 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
     }
   };
 
-  // --- EXPORT / DOWNLOAD ---
-  const exportVideo = async () => {
-    if (!project) return;
 
-    // If we have the final blob, download it directly
-    if (project.finalVideoBlob) {
-      forceDownloadBlob(project.finalVideoBlob, `AuraDomoMuse-Short-${project.id}.mp4`);
-      return;
-    }
-
-    // If we have a URL but no blob, try fetching it
-    if (project.finalVideoUrl) {
-      try {
-        const res = await fetch(project.finalVideoUrl);
-        const blob = await res.blob();
-        forceDownloadBlob(blob, `AuraDomoMuse-Short-${project.id}.mp4`);
-        return;
-      } catch(e) {
-        console.error('Failed to fetch final video blob:', e);
-      }
-    }
-
-    // Fallback: re-stitch
-    setIsExporting(true);
-    setExportProgress(10);
-    setIsPlaying(false);
-    try {
-      const ffmpeg = new FFmpeg();
-      ffmpeg.on('progress', ({ progress }) => setExportProgress(Math.max(10, Math.round(progress * 100))));
-
-      const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
-      await ffmpeg.load({
-        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
-        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
-      });
-      setExportProgress(20);
-
-      let concatList = '';
-      let vidIdx = 0;
-      for (const frame of project.frames) {
-        if (frame.videoBlob) {
-          const arr = new Uint8Array(await frame.videoBlob.arrayBuffer());
-          await ffmpeg.writeFile(`v${vidIdx}.mp4`, arr);
-          concatList += `file 'v${vidIdx}.mp4'\n`;
-          vidIdx++;
-        }
-      }
-      if (vidIdx === 0) throw new Error("No video clips to export.");
-      await ffmpeg.writeFile('concat.txt', concatList);
-      setExportProgress(30);
-
-      await ffmpeg.exec(['-f', 'concat', '-safe', '0', '-i', 'concat.txt', '-c', 'copy', '-an', '-movflags', '+faststart', 'silent.mp4']);
-      setExportProgress(60);
-
-      let finalFile = 'silent.mp4';
-      if (project.audioBlob) {
-        const audioArr = new Uint8Array(await project.audioBlob.arrayBuffer());
-        await ffmpeg.writeFile('audio.wav', audioArr);
-        const mixOk = await ffmpeg.exec([
-          '-i', 'silent.mp4', '-i', 'audio.wav',
-          '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k',
-          '-map', '0:v:0', '-map', '1:a:0',
-          '-shortest', '-movflags', '+faststart', 'final.mp4'
-        ]);
-        if (mixOk === 0) finalFile = 'final.mp4';
-      }
-      setExportProgress(90);
-
-      const rawData = await ffmpeg.readFile(finalFile);
-      const blob = new Blob([rawData as any], { type: 'video/mp4' });
-      forceDownloadBlob(blob, `AuraDomoMuse-Short-${project.id}.mp4`);
-      setProject(prev => prev ? { ...prev, finalVideoUrl: URL.createObjectURL(blob), finalVideoBlob: blob } : null);
-      setExportProgress(100);
-    } catch (error) {
-      console.error("FFmpeg export failed:", error);
-      alert("Export failed — download individual clips using the buttons on each scene.");
-    } finally {
-      setIsExporting(false);
-      setExportProgress(0);
-    }
-  };
-
-  // --- Download individual clip ---
-  const downloadClip = async (frame: StoryboardFrame, idx: number, projectId: string) => {
-    try {
-      // Prefer the stored blob (direct from proxy)
-      if (frame.videoBlob) {
-        forceDownloadBlob(frame.videoBlob, `scene-${idx + 1}-${projectId}.mp4`);
-        return;
-      }
-      // Try fetching from blob URL
-      if (frame.videoUrl) {
-        const res = await fetch(frame.videoUrl);
-        const blob = await res.blob();
-        forceDownloadBlob(blob, `scene-${idx + 1}-${projectId}.mp4`);
-        return;
-      }
-      // Fall back to image
-      if (frame.imageUrl) {
-        const res = await fetch(frame.imageUrl);
-        const blob = await res.blob();
-        forceDownloadBlob(blob, `scene-${idx + 1}-${projectId}.png`);
-      }
-    } catch(e) {
-      console.error('Download failed:', e);
-      alert(`Download failed for scene ${idx + 1}. Check console.`);
-    }
-  };
-
-  const downloadAudio = async () => {
-    if (project?.audioBlob) {
-      forceDownloadBlob(project.audioBlob, `voiceover-${project.id}.wav`);
-    } else if (project?.audioUrl) {
-      const res = await fetch(project.audioUrl);
-      const blob = await res.blob();
-      forceDownloadBlob(blob, `voiceover-${project.id}.wav`);
-    }
-  };
 
   // --- RENDER ---
   return (
@@ -670,14 +534,16 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
                             {isPlaying ? 'Pause Preview' : 'Play Preview'}
                           </button>
                         )}
-                        <button 
-                          onClick={exportVideo}
-                          disabled={isExporting}
-                          className="px-8 py-3 bg-orange-600 text-white font-bold rounded-full flex items-center gap-2 hover:bg-orange-700 transition-all disabled:opacity-50 shadow-lg"
-                          style={{ boxShadow: '0 0 40px rgba(242,125,38,0.15)' }}
-                        >
-                          {isExporting ? (<><Loader2 className="animate-spin" size={20} /> Exporting {exportProgress}%</>) : (<><Download size={20} /> Download Full MP4</>)}
-                        </button>
+                        {project.finalVideoUrl && (
+                          <a 
+                            href={project.finalVideoUrl}
+                            download={`AuraDomoMuse-Short-${project.id}.mp4`}
+                            className="px-8 py-3 bg-orange-600 text-white font-bold rounded-full flex items-center gap-2 hover:bg-orange-700 transition-all shadow-lg no-underline"
+                            style={{ boxShadow: '0 0 40px rgba(242,125,38,0.15)' }}
+                          >
+                            <Download size={20} /> Download Full MP4
+                          </a>
+                        )}
                       </div>
                     </div>
                   </section>
@@ -702,9 +568,9 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
                       <h3 className="font-bold uppercase tracking-widest text-sm">Storyboard Clips</h3>
                     </div>
                     {project.audioUrl && (
-                      <button onClick={downloadAudio} className="text-xs px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-full flex items-center gap-1.5 transition-all">
+                      <a href={project.audioUrl} download={`voiceover-${project.id}.wav`} className="text-xs px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-full flex items-center gap-1.5 transition-all no-underline text-white">
                         <Volume2 size={12} /> Download Audio
-                      </button>
+                      </a>
                     )}
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -720,16 +586,20 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
                         ) : (
                           <div className="w-full h-full flex items-center justify-center bg-white/5 animate-pulse"><ImageIcon className="text-white/10" size={32} /></div>
                         )}
-                        <div className="absolute top-2 left-2 bg-black/60 px-2 py-1 rounded text-[10px] font-bold">SCENE {idx + 1}</div>
-                        {/* Download button */}
-                        {(frame.videoUrl || frame.videoBlob || frame.imageUrl) && (
-                          <button
-                            onClick={() => downloadClip(frame, idx, project.id)}
-                            className="absolute bottom-2 right-2 p-2 bg-black/60 hover:bg-orange-500 rounded-full opacity-0 group-hover:opacity-100 transition-all"
-                            title={`Download Scene ${idx + 1}`}
+                        <div className="absolute top-2 left-2 bg-black/60 px-2 py-1 rounded text-[10px] font-bold">
+                          SCENE {idx + 1}
+                          {frame.videoUrl ? ' ✓' : ''}
+                        </div>
+                        {/* Download — plain <a> tag, NO JavaScript */}
+                        {frame.videoUrl && (
+                          <a
+                            href={frame.videoUrl}
+                            download={`scene-${idx + 1}-${project.id}.mp4`}
+                            className="absolute bottom-2 right-2 p-2 bg-green-600 hover:bg-orange-500 rounded-full transition-all no-underline text-white"
+                            title={`Download Scene ${idx + 1} MP4`}
                           >
                             <Download size={14} />
-                          </button>
+                          </a>
                         )}
                       </motion.div>
                     ))}
