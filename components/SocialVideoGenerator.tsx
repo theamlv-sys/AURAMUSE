@@ -619,9 +619,28 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
                         </>
                       )}
                     </div>
+                    {/* Audio Player and Download */}
                     {!project.finalVideoUrl && (
-                      <audio ref={audioRef} src={project.audioUrl} onEnded={() => setIsPlaying(false)} className="hidden" controls={false} muted={false} />
+                      <div className="flex flex-col items-center gap-2">
+                        <audio ref={audioRef} src={project.audioUrl} onEnded={() => setIsPlaying(false)} className="hidden" controls={false} muted={false} />
+                        {project.audioUrl && (
+                          <button 
+                            onClick={async () => {
+                              const a = document.createElement('a');
+                              a.href = project.audioUrl!;
+                              a.download = `Voiceover-${project.id}.wav`;
+                              document.body.appendChild(a);
+                              a.click();
+                              document.body.removeChild(a);
+                            }}
+                            className="text-xs text-white/50 hover:text-white flex items-center gap-1 transition-colors"
+                          >
+                            <Download size={12} /> Download Voiceover
+                          </button>
+                        )}
+                      </div>
                     )}
+
                     <div className="flex flex-col items-center gap-4">
                       <div className="flex flex-wrap justify-center gap-4">
                         {!project.finalVideoUrl && (
@@ -663,7 +682,24 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
                     {project.frames.map((frame, idx) => (
                       <motion.div key={frame.id} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="group relative aspect-[9/16] bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden">
                         {frame.videoUrl ? (
-                          <video src={frame.videoUrl} autoPlay loop muted playsInline className="w-full h-full object-cover" />
+                          <>
+                            <video src={frame.videoUrl} autoPlay loop muted playsInline className="w-full h-full object-cover" />
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const a = document.createElement('a');
+                                a.href = frame.videoUrl!;
+                                a.download = `Scene-${idx + 1}-${project.id}.mp4`;
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                              }}
+                              className="absolute bottom-2 right-2 p-1.5 bg-black/60 hover:bg-orange-500 rounded-full text-white backdrop-blur-sm transition-colors opacity-0 group-hover:opacity-100"
+                              title="Download Scene"
+                            >
+                              <Download size={14} />
+                            </button>
+                          </>
                         ) : frame.imageUrl ? (
                           <div className="relative w-full h-full">
                             <img src={frame.imageUrl} alt={frame.scriptPart} className="w-full h-full object-cover opacity-50" referrerPolicy="no-referrer" />
