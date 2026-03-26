@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { SubscriptionTier } from '../types';
-import { callGeminiProxy, generateVeoVideo } from '../services/geminiService';
+import { callGeminiProxy, generateVeoVideoBlob } from '../services/geminiService';
 import { 
   Sparkles, Video, Mic, Loader2, Play, AlertCircle,
   Image as ImageIcon, Type, Volume2, RefreshCw, Download
@@ -83,12 +83,6 @@ function forceDownloadBlob(blob: Blob, filename: string) {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   }, 1000);
-}
-
-// --- Convert a URL (blob or data) to a Blob ---
-async function urlToBlob(url: string): Promise<Blob> {
-  const res = await fetch(url);
-  return res.blob();
 }
 
 // --- Styles ---
@@ -275,12 +269,10 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
         if (frame.imageUrl) {
           try {
             const base64Data = frame.imageUrl.split(',')[1]?.trim();
-            const videoUrl = await generateVeoVideo(
+            const { url: videoUrl, blob: videoBlob } = await generateVeoVideoBlob(
               `${frame.imagePrompt}, ${stylePrompt}. ABSOLUTELY NO mention of sound, audio, talking, voices or music. Purely visual cinematic movement.`,
               base64Data
             );
-            // Fetch the blob immediately so we have the actual binary data
-            const videoBlob = await urlToBlob(videoUrl);
             framesWithVideo[i] = { ...frame, videoUrl, videoBlob };
             setProject(prev => prev ? { ...prev, frames: [...framesWithVideo] } : null);
           } catch (err: any) {
@@ -368,7 +360,7 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
         }
 
         const rawData = await ffmpeg.readFile(finalFile);
-        const finalBlob = new Blob([rawData], { type: 'video/mp4' });
+        const finalBlob = new Blob([rawData as any], { type: 'video/mp4' });
         const finalVideoUrl = URL.createObjectURL(finalBlob);
 
         setProject(prev => prev ? { ...prev, finalVideoUrl, finalVideoBlob: finalBlob, status: 'completed' } : null);
@@ -398,10 +390,11 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
       return;
     }
 
-    // If we have a URL but no blob, fetch it first
+    // If we have a URL but no blob, try fetching it
     if (project.finalVideoUrl) {
       try {
-        const blob = await urlToBlob(project.finalVideoUrl);
+        const res = await fetch(project.finalVideoUrl);
+        const blob = await res.blob();
         forceDownloadBlob(blob, `AuraDomoMuse-Short-${project.id}.mp4`);
         return;
       } catch(e) {
@@ -456,7 +449,7 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
       setExportProgress(90);
 
       const rawData = await ffmpeg.readFile(finalFile);
-      const blob = new Blob([rawData], { type: 'video/mp4' });
+      const blob = new Blob([rawData as any], { type: 'video/mp4' });
       forceDownloadBlob(blob, `AuraDomoMuse-Short-${project.id}.mp4`);
       setProject(prev => prev ? { ...prev, finalVideoUrl: URL.createObjectURL(blob), finalVideoBlob: blob } : null);
       setExportProgress(100);
@@ -471,33 +464,38 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
 
   // --- Download individual clip ---
   const downloadClip = async (frame: StoryboardFrame, idx: number, projectId: string) => {
-    // Prefer the stored blob
-    if (frame.videoBlob) {
-      forceDownloadBlob(frame.videoBlob, `scene-${idx + 1}-${projectId}.mp4`);
-      return;
-    }
-    // Try fetching from URL
-    if (frame.videoUrl) {
-      try {
-        const blob = await urlToBlob(frame.videoUrl);
+    try {
+      // Prefer the stored blob (direct from proxy)
+      if (frame.videoBlob) {
+        forceDownloadBlob(frame.videoBlob, `scene-${idx + 1}-${projectId}.mp4`);
+        return;
+      }
+      // Try fetching from blob URL
+      if (frame.videoUrl) {
+        const res = await fetch(frame.videoUrl);
+        const blob = await res.blob();
         forceDownloadBlob(blob, `scene-${idx + 1}-${projectId}.mp4`);
         return;
-      } catch(e) { console.error('Video download failed', e); }
-    }
-    // Fall back to image
-    if (frame.imageUrl) {
-      try {
-        const blob = await urlToBlob(frame.imageUrl);
+      }
+      // Fall back to image
+      if (frame.imageUrl) {
+        const res = await fetch(frame.imageUrl);
+        const blob = await res.blob();
         forceDownloadBlob(blob, `scene-${idx + 1}-${projectId}.png`);
-      } catch(e) { console.error('Image download failed', e); }
+      }
+    } catch(e) {
+      console.error('Download failed:', e);
+      alert(`Download failed for scene ${idx + 1}. Check console.`);
     }
   };
 
-  const downloadAudio = () => {
+  const downloadAudio = async () => {
     if (project?.audioBlob) {
       forceDownloadBlob(project.audioBlob, `voiceover-${project.id}.wav`);
     } else if (project?.audioUrl) {
-      urlToBlob(project.audioUrl).then(blob => forceDownloadBlob(blob, `voiceover-${project.id}.wav`));
+      const res = await fetch(project.audioUrl);
+      const blob = await res.blob();
+      forceDownloadBlob(blob, `voiceover-${project.id}.wav`);
     }
   };
 
