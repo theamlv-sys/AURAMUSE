@@ -519,11 +519,6 @@ export const generateStoryboardImage = async (
 };
 
 export const generateVeoVideo = async (prompt: string, imageBase64?: string): Promise<string> => {
-  const result = await generateVeoVideoBlob(prompt, imageBase64);
-  return result.url;
-};
-
-export const generateVeoVideoBlob = async (prompt: string, imageBase64?: string): Promise<{ url: string; blob: Blob }> => {
   if (window.aistudio && window.aistudio.hasSelectedApiKey) {
     const hasKey = await window.aistudio.hasSelectedApiKey();
     if (!hasKey) {
@@ -534,6 +529,9 @@ export const generateVeoVideoBlob = async (prompt: string, imageBase64?: string)
   const modelId = 'veo-3.1-fast-generate-preview';
 
   try {
+    // NOTE: Veo might require specialized handling or a different endpoint in the future.
+    // For now, we attempt to proxy it. If the proxy doesn't support the videos endpoint,
+    // this may need a dedicated backend function.
     const parts: any[] = [{ text: prompt }];
     
     if (imageBase64) {
@@ -553,7 +551,7 @@ export const generateVeoVideoBlob = async (prompt: string, imageBase64?: string)
         const videoUri = response.response?.generatedVideos?.[0]?.video?.uri;
         if (videoUri) {
             const blob = await callGeminiProxy('', null, { downloadUrl: videoUri });
-            return { url: URL.createObjectURL(blob), blob };
+            return URL.createObjectURL(blob);
         }
         throw new Error("No operation returned from Veo API. Proxy Response: " + JSON.stringify(response));
     }
@@ -562,7 +560,7 @@ export const generateVeoVideoBlob = async (prompt: string, imageBase64?: string)
 
     // Poll until done
     while (true) {
-        await new Promise(r => setTimeout(r, 8000));
+        await new Promise(r => setTimeout(r, 8000)); // Poll every 8s
         const pollRes = await callGeminiProxy(modelId, null, { operation: operationName });
         
         if (pollRes.done) {
@@ -583,7 +581,7 @@ export const generateVeoVideoBlob = async (prompt: string, imageBase64?: string)
             if (!videoUri) throw new Error("Video URI not found in completed operation: " + JSON.stringify(pollRes));
             
             const blob = await callGeminiProxy('', null, { downloadUrl: videoUri });
-            return { url: URL.createObjectURL(blob), blob };
+            return URL.createObjectURL(blob);
         }
         console.log("Polling Veo operation...");
     }

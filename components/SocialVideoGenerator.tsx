@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { SubscriptionTier } from '../types';
-import { callGeminiProxy, generateVeoVideoBlob } from '../services/geminiService';
+import { callGeminiProxy, generateVeoVideo } from '../services/geminiService';
 import { 
   Sparkles, Video, Mic, Loader2, Play, AlertCircle,
   Image as ImageIcon, Type, Volume2, RefreshCw, Download
@@ -22,7 +22,6 @@ interface StoryboardFrame {
   imagePrompt: string;
   imageUrl?: string;
   videoUrl?: string;
-  videoBlob?: Blob;  // Store raw blob for reliable download/FFmpeg
   scriptPart: string;
 }
 
@@ -33,10 +32,8 @@ interface VideoProject {
   script: string;
   frames: StoryboardFrame[];
   audioUrl?: string;
-  audioBlob?: Blob;
   audioDuration?: number;
   finalVideoUrl?: string;
-  finalVideoBlob?: Blob;
   status: VideoStatus;
   error?: string;
 }
@@ -69,8 +66,6 @@ function pcmToWav(pcmBase64: string, sampleRate: number = 24000): Blob {
   return new Blob([buffer], { type: 'audio/wav' });
 }
 
-
-
 // --- Styles ---
 const styles = [
   { name: 'Normal (Cinematic)', prompt: 'cinematic lighting, professional photography, 8k, highly detailed' },
@@ -96,6 +91,8 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
   const [isRecording, setIsRecording] = useState(false);
   const [project, setProject] = useState<VideoProject | null>(null);
   const [loadingMessage, setLoadingMessage] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
   const [currentFrameIdx, setCurrentFrameIdx] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
 
@@ -194,7 +191,7 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
       } : null);
       setLoadingMessage(`Visualizing your story in ${selectedStyle} style...`);
 
-      // 2. Generate Images via proxy
+      // 2. Generate Images via proxy (Nano Banana 2)
       const updatedFrames: StoryboardFrame[] = [];
       for (const frame of scriptData.frames) {
         const imgResponse = await callGeminiProxy('gemini-3.1-flash-image-preview', {
@@ -232,16 +229,15 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
 
       const base64Audio = audioResponse.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
       let audioUrl = '';
-      let audioBlob: Blob | undefined;
       let audioDuration = 15;
       if (base64Audio) {
-        audioBlob = pcmToWav(base64Audio, 24000);
+        const audioBlob = pcmToWav(base64Audio, 24000);
         audioUrl = URL.createObjectURL(audioBlob);
         const byteLength = atob(base64Audio).length;
         audioDuration = byteLength / 48000;
       }
 
-      setProject(prev => prev ? { ...prev, audioUrl, audioBlob, audioDuration, status: 'generating_video' } : null);
+      setProject(prev => prev ? { ...prev, audioUrl, audioDuration, status: 'generating_video' } : null);
       setLoadingMessage('Animating all scenes into cinematic video...');
 
       // 4. Generate Videos for ALL frames via proxy (Veo 3.1 Fast)
@@ -253,26 +249,27 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
         if (frame.imageUrl) {
           try {
             const base64Data = frame.imageUrl.split(',')[1]?.trim();
-            const { url: videoUrl, blob: videoBlob } = await generateVeoVideoBlob(
+            const videoUrl = await generateVeoVideo(
               `${frame.imagePrompt}, ${stylePrompt}. ABSOLUTELY NO mention of sound, audio, talking, voices or music. Purely visual cinematic movement.`,
               base64Data
             );
-            framesWithVideo[i] = { ...frame, videoUrl, videoBlob };
+            framesWithVideo[i] = { ...frame, videoUrl };
             setProject(prev => prev ? { ...prev, frames: [...framesWithVideo] } : null);
           } catch (err: any) {
             console.error(`Scene ${i + 1} video generation failed:`, err);
+            // Continue with remaining scenes
           }
         }
       }
 
-      // 5. Stitch with FFmpeg
+      // 5. Stitch with FFmpeg — Simple concat + audio mix (WASM-safe, no re-encoding)
       setProject(prev => prev ? { ...prev, status: 'stitching_video' } : null);
-      setLoadingMessage('Loading FFmpeg...');
+      setLoadingMessage('Loading FFmpeg engine...');
 
       try {
         const ffmpeg = new FFmpeg();
-        let logs: string[] = [];
-        ffmpeg.on('log', ({ message }) => { logs.push(message); console.log('FFmpeg:', message); });
+        let lastLog = '';
+        ffmpeg.on('log', ({ message }) => { lastLog = message; console.log('FFmpeg:', message); });
 
         const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
         await ffmpeg.load({
@@ -280,78 +277,76 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
           wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
         });
 
-        // Write video clips from actual blobs
-        setLoadingMessage('Writing video clips...');
+        // Write all video clips
+        setLoadingMessage('Preparing video clips...');
         let concatList = '';
         let vidCount = 0;
-        for (const frame of framesWithVideo) {
-          if (frame.videoBlob) {
-            const arr = new Uint8Array(await frame.videoBlob.arrayBuffer());
+        for (let i = 0; i < framesWithVideo.length; i++) {
+          const frame = framesWithVideo[i];
+          if (frame.videoUrl) {
+            const videoData = await fetchFile(frame.videoUrl);
             const filename = `vid${vidCount}.mp4`;
-            await ffmpeg.writeFile(filename, arr);
+            await ffmpeg.writeFile(filename, videoData);
             concatList += `file '${filename}'\n`;
             vidCount++;
           }
         }
 
-        if (vidCount === 0) throw new Error("No video clips available for stitching.");
+        if (vidCount === 0) throw new Error("No video clips were generated to stitch.");
         await ffmpeg.writeFile('concat.txt', concatList);
 
-        // Try stream-copy concat first (fast)
+        // STEP A: Concatenate clips (stream copy — fast, no re-encoding)
         setLoadingMessage('Concatenating scenes...');
-        let concatResult = await ffmpeg.exec([
+        await ffmpeg.exec([
           '-f', 'concat', '-safe', '0', '-i', 'concat.txt',
-          '-c', 'copy', '-an', '-movflags', '+faststart',
+          '-c', 'copy', '-an',
           'silent.mp4'
         ]);
 
-        // If stream-copy fails (codec mismatch), re-encode
-        if (concatResult !== 0) {
-          console.warn('Stream-copy concat failed, trying re-encode...');
-          setLoadingMessage('Re-encoding scenes...');
-          concatResult = await ffmpeg.exec([
-            '-f', 'concat', '-safe', '0', '-i', 'concat.txt',
-            '-vf', 'scale=720:1280,fps=30',
-            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28',
-            '-pix_fmt', 'yuv420p', '-an', '-movflags', '+faststart',
-            'silent.mp4'
-          ]);
-        }
-
-        if (concatResult !== 0) throw new Error('FFmpeg concat failed. Logs: ' + logs.slice(-5).join('\n'));
-
         let finalFile = 'silent.mp4';
 
-        // Mix audio
-        if (audioBlob) {
-          setLoadingMessage('Mixing voiceover...');
-          const audioArr = new Uint8Array(await audioBlob.arrayBuffer());
-          await ffmpeg.writeFile('audio.wav', audioArr);
+        // STEP B: Mix voiceover audio
+        if (audioUrl) {
+          setLoadingMessage('Mixing voiceover audio...');
+          const audioData = await fetchFile(audioUrl);
+          await ffmpeg.writeFile('audio.wav', audioData);
 
           const mixResult = await ffmpeg.exec([
-            '-i', 'silent.mp4', '-i', 'audio.wav',
-            '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k',
+            '-i', 'silent.mp4',
+            '-i', 'audio.wav',
+            '-c:v', 'copy',
+            '-c:a', 'aac', '-b:a', '128k',
             '-map', '0:v:0', '-map', '1:a:0',
-            '-shortest', '-movflags', '+faststart',
+            '-shortest',
             'final.mp4'
           ]);
 
           if (mixResult === 0) {
             finalFile = 'final.mp4';
           } else {
-            console.warn('Audio mix failed, serving silent video');
+            console.warn('Audio mix failed, using silent video. Last log:', lastLog);
           }
         }
 
-        const rawData = await ffmpeg.readFile(finalFile);
-        const finalBlob = new Blob([rawData as any], { type: 'video/mp4' });
-        const finalVideoUrl = URL.createObjectURL(finalBlob);
+        setLoadingMessage('Preparing download...');
+        const data = await ffmpeg.readFile(finalFile);
+        const blob = new Blob([new Uint8Array(data as any)], { type: 'video/mp4' });
+        const finalVideoUrl = URL.createObjectURL(blob);
 
-        setProject(prev => prev ? { ...prev, finalVideoUrl, finalVideoBlob: finalBlob, status: 'completed' } : null);
-        setLoadingMessage('Video complete! Click Download to save.');
+        setProject(prev => prev ? { ...prev, finalVideoUrl, status: 'completed' } : null);
+        setLoadingMessage('Video complete!');
+
+        // Auto-trigger download
+        const a = document.createElement('a');
+        a.href = finalVideoUrl;
+        a.download = 'AuraDomoMuse-Short.mp4';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
 
       } catch (ffmpegError: any) {
-        console.error("FFmpeg failed:", ffmpegError);
+        console.error("FFmpeg stitching failed:", ffmpegError?.message || ffmpegError, 'Last log:', ffmpegError);
+        // Still mark as completed so user can access individual clips
         setProject(prev => prev ? { ...prev, status: 'completed' } : null);
         setLoadingMessage('Stitching skipped — download individual clips below.');
       }
@@ -361,7 +356,89 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
     }
   };
 
+  // --- EXPORT / DOWNLOAD ---
+  const exportVideo = async () => {
+    if (!project) return;
 
+    // If we already have a final stitched video, download it immediately
+    if (project.finalVideoUrl) {
+      const a = document.createElement('a');
+      a.href = project.finalVideoUrl;
+      a.download = `AuraDomoMuse-Short-${project.id}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      return;
+    }
+
+    // Fallback: re-stitch using simple -c copy (WASM-safe)
+    setIsExporting(true);
+    setExportProgress(0);
+    setIsPlaying(false);
+    try {
+      const ffmpeg = new FFmpeg();
+      ffmpeg.on('progress', ({ progress }) => setExportProgress(Math.round(progress * 100)));
+      const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
+      await ffmpeg.load({
+        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
+        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
+      });
+
+      let concatList = '';
+      for (let i = 0; i < project.frames.length; i++) {
+        if (project.frames[i].videoUrl) {
+          const videoData = await fetchFile(project.frames[i].videoUrl!);
+          await ffmpeg.writeFile(`vid${i}.mp4`, videoData);
+          concatList += `file 'vid${i}.mp4'\n`;
+        }
+      }
+      await ffmpeg.writeFile('concat.txt', concatList);
+
+      // Concat with stream copy
+      await ffmpeg.exec(['-f', 'concat', '-safe', '0', '-i', 'concat.txt', '-c', 'copy', '-an', 'silent.mp4']);
+
+      let finalFile = 'silent.mp4';
+      if (project.audioUrl) {
+        const audioData = await fetchFile(project.audioUrl);
+        await ffmpeg.writeFile('audio.wav', audioData);
+        const mixResult = await ffmpeg.exec([
+          '-i', 'silent.mp4', '-i', 'audio.wav',
+          '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k',
+          '-map', '0:v:0', '-map', '1:a:0', '-shortest', 'final.mp4'
+        ]);
+        if (mixResult === 0) finalFile = 'final.mp4';
+      }
+
+      const data = await ffmpeg.readFile(finalFile);
+      const blob = new Blob([new Uint8Array(data as any)], { type: 'video/mp4' });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `AuraDomoMuse-Short-${project.id}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      setProject(prev => prev ? { ...prev, finalVideoUrl: url } : null);
+    } catch (error) {
+      console.error("FFmpeg export failed:", error);
+      alert("FFmpeg failed. Use the individual clip download buttons instead.");
+    } finally {
+      setIsExporting(false);
+      setExportProgress(0);
+    }
+  };
+
+  // --- Download individual clip ---
+  const downloadClip = (url: string, name: string) => {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
 
   // --- RENDER ---
   return (
@@ -534,16 +611,14 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
                             {isPlaying ? 'Pause Preview' : 'Play Preview'}
                           </button>
                         )}
-                        {project.finalVideoUrl && (
-                          <a 
-                            href={project.finalVideoUrl}
-                            download={`AuraDomoMuse-Short-${project.id}.mp4`}
-                            className="px-8 py-3 bg-orange-600 text-white font-bold rounded-full flex items-center gap-2 hover:bg-orange-700 transition-all shadow-lg no-underline"
-                            style={{ boxShadow: '0 0 40px rgba(242,125,38,0.15)' }}
-                          >
-                            <Download size={20} /> Download Full MP4
-                          </a>
-                        )}
+                        <button 
+                          onClick={exportVideo}
+                          disabled={isExporting}
+                          className="px-8 py-3 bg-orange-600 text-white font-bold rounded-full flex items-center gap-2 hover:bg-orange-700 transition-all disabled:opacity-50 shadow-lg"
+                          style={{ boxShadow: '0 0 40px rgba(242,125,38,0.15)' }}
+                        >
+                          {isExporting ? (<><Loader2 className="animate-spin" size={20} /> Exporting {exportProgress}%</>) : (<><Download size={20} /> Download Full MP4</>)}
+                        </button>
                       </div>
                     </div>
                   </section>
@@ -568,9 +643,9 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
                       <h3 className="font-bold uppercase tracking-widest text-sm">Storyboard Clips</h3>
                     </div>
                     {project.audioUrl && (
-                      <a href={project.audioUrl} download={`voiceover-${project.id}.wav`} className="text-xs px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-full flex items-center gap-1.5 transition-all no-underline text-white">
+                      <button onClick={() => downloadClip(project.audioUrl!, `voiceover-${project.id}.wav`)} className="text-xs px-3 py-1.5 bg-white/10 hover:bg-white/20 rounded-full flex items-center gap-1.5 transition-all">
                         <Volume2 size={12} /> Download Audio
-                      </a>
+                      </button>
                     )}
                   </div>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -586,20 +661,19 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
                         ) : (
                           <div className="w-full h-full flex items-center justify-center bg-white/5 animate-pulse"><ImageIcon className="text-white/10" size={32} /></div>
                         )}
-                        <div className="absolute top-2 left-2 bg-black/60 px-2 py-1 rounded text-[10px] font-bold">
-                          SCENE {idx + 1}
-                          {frame.videoUrl ? ' ✓' : ''}
-                        </div>
-                        {/* Download — plain <a> tag, NO JavaScript */}
-                        {frame.videoUrl && (
-                          <a
-                            href={frame.videoUrl}
-                            download={`scene-${idx + 1}-${project.id}.mp4`}
-                            className="absolute bottom-2 right-2 p-2 bg-green-600 hover:bg-orange-500 rounded-full transition-all no-underline text-white"
-                            title={`Download Scene ${idx + 1} MP4`}
+                        <div className="absolute top-2 left-2 bg-black/60 px-2 py-1 rounded text-[10px] font-bold">SCENE {idx + 1}</div>
+                        {/* Download button for individual clip */}
+                        {(frame.videoUrl || frame.imageUrl) && (
+                          <button
+                            onClick={() => downloadClip(
+                              frame.videoUrl || frame.imageUrl!,
+                              `scene-${idx + 1}-${project.id}.${frame.videoUrl ? 'mp4' : 'png'}`
+                            )}
+                            className="absolute bottom-2 right-2 p-2 bg-black/60 hover:bg-orange-500 rounded-full opacity-0 group-hover:opacity-100 transition-all"
+                            title={`Download Scene ${idx + 1}`}
                           >
                             <Download size={14} />
-                          </a>
+                          </button>
                         )}
                       </motion.div>
                     ))}
