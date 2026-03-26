@@ -22,6 +22,7 @@ interface StoryboardFrame {
   imagePrompt: string;
   imageUrl?: string;
   videoUrl?: string;
+  videoBlob?: Blob;
   scriptPart: string;
 }
 
@@ -242,6 +243,7 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
 
       // 4. Generate Videos for ALL frames via proxy (Veo 3.1 Fast)
       const framesWithVideo: StoryboardFrame[] = [...updatedFrames];
+      let videoErrors: string[] = [];
       for (let i = 0; i < framesWithVideo.length; i++) {
         const frame = framesWithVideo[i];
         setLoadingMessage(`Animating scene ${i + 1} of ${framesWithVideo.length}...`);
@@ -253,13 +255,20 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
               `${frame.imagePrompt}, ${stylePrompt}. ABSOLUTELY NO mention of sound, audio, talking, voices or music. Purely visual cinematic movement.`,
               base64Data
             );
-            framesWithVideo[i] = { ...frame, videoUrl };
+            // Fetch the blob from the blob URL so FFmpeg can access it later
+            const videoBlob = await fetch(videoUrl).then(r => r.blob());
+            framesWithVideo[i] = { ...frame, videoUrl, videoBlob };
             setProject(prev => prev ? { ...prev, frames: [...framesWithVideo] } : null);
           } catch (err: any) {
-            console.error(`Scene ${i + 1} video generation failed:`, err);
-            // Continue with remaining scenes
+            const errMsg = err?.message || String(err);
+            console.error(`Scene ${i + 1} video generation failed:`, errMsg);
+            videoErrors.push(`Scene ${i + 1}: ${errMsg}`);
+            setLoadingMessage(`Scene ${i + 1} failed (${errMsg.substring(0, 60)}...), continuing...`);
           }
         }
+      }
+      if (videoErrors.length > 0) {
+        console.warn('Video generation errors:', videoErrors);
       }
 
       // 5. Stitch with FFmpeg — Simple concat + audio mix (WASM-safe, no re-encoding)
@@ -277,18 +286,28 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
           wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
         });
 
-        // Write all video clips
+        // Write all video clips — use stored blobs directly (blob URLs can fail with fetchFile)
         setLoadingMessage('Preparing video clips...');
         let concatList = '';
         let vidCount = 0;
         for (let i = 0; i < framesWithVideo.length; i++) {
           const frame = framesWithVideo[i];
-          if (frame.videoUrl) {
-            const videoData = await fetchFile(frame.videoUrl);
+          if (frame.videoBlob) {
+            const arrayBuf = await frame.videoBlob.arrayBuffer();
             const filename = `vid${vidCount}.mp4`;
-            await ffmpeg.writeFile(filename, videoData);
+            await ffmpeg.writeFile(filename, new Uint8Array(arrayBuf));
             concatList += `file '${filename}'\n`;
             vidCount++;
+          } else if (frame.videoUrl) {
+            try {
+              const videoData = await fetchFile(frame.videoUrl);
+              const filename = `vid${vidCount}.mp4`;
+              await ffmpeg.writeFile(filename, videoData);
+              concatList += `file '${filename}'\n`;
+              vidCount++;
+            } catch (e) {
+              console.warn(`Failed to fetch video ${i}:`, e);
+            }
           }
         }
 
@@ -386,10 +405,20 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
 
       let concatList = '';
       for (let i = 0; i < project.frames.length; i++) {
-        if (project.frames[i].videoUrl) {
-          const videoData = await fetchFile(project.frames[i].videoUrl!);
-          await ffmpeg.writeFile(`vid${i}.mp4`, videoData);
-          concatList += `file 'vid${i}.mp4'\n`;
+        const frame = project.frames[i];
+        if (frame.videoBlob) {
+          const arrayBuf = await frame.videoBlob.arrayBuffer();
+          const filename = `vid${i}.mp4`;
+          await ffmpeg.writeFile(filename, new Uint8Array(arrayBuf));
+          concatList += `file '${filename}'\n`;
+        } else if (frame.videoUrl) {
+          try {
+            const videoData = await fetchFile(frame.videoUrl);
+            await ffmpeg.writeFile(`vid${i}.mp4`, videoData);
+            concatList += `file 'vid${i}.mp4'\n`;
+          } catch (e) {
+            console.warn(`Export: Failed to fetch video ${i}`, e);
+          }
         }
       }
       await ffmpeg.writeFile('concat.txt', concatList);
