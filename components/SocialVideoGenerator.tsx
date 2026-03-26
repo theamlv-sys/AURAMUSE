@@ -262,67 +262,102 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
         }
       }
 
-      // 5. Stitch with FFmpeg
+      // 5. Stitch with FFmpeg — Using proven 2-step VoiceToMovie approach
       setProject(prev => prev ? { ...prev, status: 'stitching_video' } : null);
-      setLoadingMessage('Stitching final video with FFmpeg...');
+      setLoadingMessage('Loading FFmpeg engine...');
 
       try {
         const ffmpeg = new FFmpeg();
+        let lastLog = '';
+        ffmpeg.on('log', ({ message }) => { lastLog = message; console.log('FFmpeg:', message); });
+
         const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
         await ffmpeg.load({
           coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
           wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
         });
 
-        // Write audio
-        if (audioUrl) {
-          const audioData = await fetchFile(audioUrl);
-          await ffmpeg.writeFile('audio.wav', audioData);
-        }
-
-        // Write video files and prepare filter_complex
-        const inputArgs: string[] = [];
-        let filterComplex = '';
+        // — STEP 5a: Write all video clips and build concat list —
+        setLoadingMessage('Preparing video clips...');
+        let concatList = '';
         let vidCount = 0;
-
         for (let i = 0; i < framesWithVideo.length; i++) {
           const frame = framesWithVideo[i];
           if (frame.videoUrl) {
             const videoData = await fetchFile(frame.videoUrl);
             const filename = `vid${vidCount}.mp4`;
             await ffmpeg.writeFile(filename, videoData);
-            inputArgs.push('-i', filename);
-            filterComplex += `[${vidCount}:v]fps=30,scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,format=yuv420p[v${vidCount}];`;
+            concatList += `file '${filename}'\n`;
             vidCount++;
           }
         }
 
         if (vidCount === 0) throw new Error("No video clips were generated to stitch.");
 
-        for (let i = 0; i < vidCount; i++) filterComplex += `[v${i}]`;
-        filterComplex += `concat=n=${vidCount}:v=1:a=0[outv]`;
+        await ffmpeg.writeFile('concat.txt', concatList);
 
-        const ffmpegArgs = [...inputArgs];
-        if (audioUrl) ffmpegArgs.push('-i', 'audio.wav');
-        ffmpegArgs.push('-filter_complex', filterComplex);
-        ffmpegArgs.push('-map', '[outv]');
-        if (audioUrl) ffmpegArgs.push('-map', `${vidCount}:a:0`);
-        ffmpegArgs.push('-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '28');
-        if (audioUrl) ffmpegArgs.push('-c:a', 'aac', '-shortest');
-        ffmpegArgs.push('output.mp4');
+        // — STEP 5b: Concatenate + normalize all clips into one silent video —
+        // Matches VoiceToMovie: scale to 1080x1920, pad black bars, normalize fps, strip audio
+        setLoadingMessage('Normalizing and concatenating all scenes...');
+        const concatCode = await ffmpeg.exec([
+          '-f', 'concat', '-safe', '0', '-i', 'concat.txt',
+          '-vf', 'scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30',
+          '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
+          '-an',
+          'temp-concat.mp4'
+        ]);
 
-        await ffmpeg.exec(ffmpegArgs);
+        if (concatCode !== 0) throw new Error(`Concat failed (code ${concatCode}). ${lastLog}`);
 
-        const data = await ffmpeg.readFile('output.mp4');
-        const blob = new Blob([data], { type: 'video/mp4' });
+        // — STEP 5c: Mix voiceover audio into the concatenated video —
+        let finalFile = 'temp-concat.mp4';
+
+        if (audioUrl) {
+          setLoadingMessage('Mixing voiceover audio...');
+          const audioData = await fetchFile(audioUrl);
+          await ffmpeg.writeFile('audio.wav', audioData);
+
+          // Use apad to pad audio with silence if voiceover is shorter than video
+          const mixCode = await ffmpeg.exec([
+            '-i', 'temp-concat.mp4',
+            '-i', 'audio.wav',
+            '-filter_complex', '[1:a]apad[a]',
+            '-map', '0:v', '-map', '[a]',
+            '-c:v', 'copy',
+            '-c:a', 'aac', '-b:a', '128k',
+            '-shortest',
+            'final-output.mp4'
+          ]);
+
+          if (mixCode !== 0) {
+            console.warn(`Audio mix failed (code ${mixCode}), using silent video. ${lastLog}`);
+            // Fall back to silent video
+          } else {
+            finalFile = 'final-output.mp4';
+          }
+        }
+
+        setLoadingMessage('Preparing download...');
+        const data = await ffmpeg.readFile(finalFile);
+        const blob = new Blob([new Uint8Array(data as any)], { type: 'video/mp4' });
         const finalVideoUrl = URL.createObjectURL(blob);
 
         setProject(prev => prev ? { ...prev, finalVideoUrl, status: 'completed' } : null);
         setLoadingMessage('Video complete!');
+
+        // Cleanup
+        try {
+          for (let i = 0; i < vidCount; i++) await ffmpeg.deleteFile(`vid${i}.mp4`);
+          await ffmpeg.deleteFile('concat.txt');
+          await ffmpeg.deleteFile('temp-concat.mp4');
+          if (audioUrl) await ffmpeg.deleteFile('audio.wav');
+          if (finalFile === 'final-output.mp4') await ffmpeg.deleteFile('final-output.mp4');
+        } catch(_) {}
+
       } catch (ffmpegError: any) {
         console.error("FFmpeg stitching failed:", ffmpegError);
         setProject(prev => prev ? { ...prev, status: 'completed' } : null);
-        setLoadingMessage('Video complete (stitching skipped — download individual clips)!');
+        setLoadingMessage('Video complete (stitching skipped — play preview or download clips)!');
       }
     } catch (error: any) {
       console.error(error);
@@ -330,18 +365,22 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
     }
   };
 
-  // --- EXPORT ---
+  // --- EXPORT / DOWNLOAD ---
   const exportVideo = async () => {
     if (!project) return;
+
+    // If we already have a final stitched video, download it immediately
     if (project.finalVideoUrl) {
       const a = document.createElement('a');
       a.href = project.finalVideoUrl;
       a.download = `AuraDomoMuse-Short-${project.id}.mp4`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
       return;
     }
-    // Fallback: re-stitch
-    if (!project.audioUrl) return;
+
+    // Fallback: re-stitch using the same 2-step VoiceToMovie approach
     setIsExporting(true);
     setExportProgress(0);
     setIsPlaying(false);
@@ -353,30 +392,61 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
         coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
         wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, 'application/wasm'),
       });
-      const audioData = await fetchFile(project.audioUrl);
-      await ffmpeg.writeFile('audio.wav', audioData);
+
+      // Step 1: Write clips and concat list
       let concatList = '';
       for (let i = 0; i < project.frames.length; i++) {
         const frame = project.frames[i];
         if (frame.videoUrl) {
           const videoData = await fetchFile(frame.videoUrl);
-          const filename = `vid${i}.mp4`;
-          await ffmpeg.writeFile(filename, videoData);
-          concatList += `file '${filename}'\n`;
+          await ffmpeg.writeFile(`vid${i}.mp4`, videoData);
+          concatList += `file 'vid${i}.mp4'\n`;
         }
       }
       await ffmpeg.writeFile('concat.txt', concatList);
-      await ffmpeg.exec(['-f', 'concat', '-safe', '0', '-i', 'concat.txt', '-c', 'copy', 'concatenated.mp4']);
-      await ffmpeg.exec(['-i', 'concatenated.mp4', '-i', 'audio.wav', '-c:v', 'copy', '-c:a', 'aac', '-map', '0:v:0', '-map', '1:a:0', '-shortest', 'output.mp4']);
-      const data = await ffmpeg.readFile('output.mp4');
-      const blob = new Blob([data], { type: 'video/mp4' });
+
+      // Step 2: Concat + normalize
+      await ffmpeg.exec([
+        '-f', 'concat', '-safe', '0', '-i', 'concat.txt',
+        '-vf', 'scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30',
+        '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
+        '-an', 'temp-concat.mp4'
+      ]);
+
+      let finalFile = 'temp-concat.mp4';
+
+      // Step 3: Mix audio if available
+      if (project.audioUrl) {
+        const audioData = await fetchFile(project.audioUrl);
+        await ffmpeg.writeFile('audio.wav', audioData);
+        await ffmpeg.exec([
+          '-i', 'temp-concat.mp4', '-i', 'audio.wav',
+          '-filter_complex', '[1:a]apad[a]',
+          '-map', '0:v', '-map', '[a]',
+          '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k',
+          '-shortest', 'final-output.mp4'
+        ]);
+        finalFile = 'final-output.mp4';
+      }
+
+      const data = await ffmpeg.readFile(finalFile);
+      const blob = new Blob([new Uint8Array(data as any)], { type: 'video/mp4' });
       const url = URL.createObjectURL(blob);
+
+      // Trigger download
       const a = document.createElement('a');
       a.href = url;
       a.download = `AuraDomoMuse-Short-${project.id}.mp4`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
+
+      // Also save for replay
+      setProject(prev => prev ? { ...prev, finalVideoUrl: url } : null);
+
     } catch (error) {
       console.error("FFmpeg export failed:", error);
+      alert("Export failed. Check console for details.");
     } finally {
       setIsExporting(false);
       setExportProgress(0);
