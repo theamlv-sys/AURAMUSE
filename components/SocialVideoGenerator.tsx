@@ -430,14 +430,24 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
     }
   };
 
-  // --- Download individual clip ---
-  const downloadClip = (url: string, name: string) => {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = name;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+  // --- Download individual clip (handles cross-origin URLs) ---
+  const downloadClip = async (url: string, name: string) => {
+    try {
+      // Fetch as blob to handle cross-origin URLs
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+    } catch {
+      // Fallback: open in new tab
+      window.open(url, '_blank');
+    }
   };
 
   // --- RENDER ---
@@ -655,8 +665,10 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
                           <video src={frame.videoUrl} autoPlay loop muted playsInline className="w-full h-full object-cover" />
                         ) : frame.imageUrl ? (
                           <div className="relative w-full h-full">
-                            <img src={frame.imageUrl} alt={frame.scriptPart} className="w-full h-full object-cover opacity-50" referrerPolicy="no-referrer" />
-                            <div className="absolute inset-0 flex items-center justify-center"><Loader2 className="animate-spin text-white/20" /></div>
+                            <img src={frame.imageUrl} alt={frame.scriptPart} className={`w-full h-full object-cover ${project.status === 'generating_images' ? 'opacity-50' : 'opacity-100'}`} referrerPolicy="no-referrer" />
+                            {(project.status === 'generating_images' || project.status === 'generating_video') && (
+                              <div className="absolute inset-0 flex items-center justify-center"><Loader2 className="animate-spin text-white/40" /></div>
+                            )}
                           </div>
                         ) : (
                           <div className="w-full h-full flex items-center justify-center bg-white/5 animate-pulse"><ImageIcon className="text-white/10" size={32} /></div>
