@@ -67,6 +67,32 @@ function pcmToWav(pcmBase64: string, sampleRate: number = 24000): Blob {
   return new Blob([buffer], { type: 'audio/wav' });
 }
 
+// --- Image Compression helper ---
+// Compresses Nano Banana PNGs (5MB+) into sharp JPEGs (~200KB) to prevent 
+// Supabase payload limits & WORKER_LIMIT crashes on the edge function.
+const compressImage = async (base64Str: string): Promise<string> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
+      } else {
+        resolve(base64Str.split(',')[1] || "");
+      }
+    };
+    img.onerror = () => resolve(base64Str.split(',')[1] || "");
+    img.src = base64Str.startsWith('data:') ? base64Str : `data:image/png;base64,${base64Str}`;
+  });
+};
+
 // --- Styles ---
 const styles = [
   { name: 'Normal (Cinematic)', prompt: 'cinematic lighting, professional photography, 8k, highly detailed' },
@@ -249,10 +275,12 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
 
         if (frame.imageUrl) {
           try {
-            const base64Data = frame.imageUrl.split(',')[1]?.trim();
+            // Compress massive 5MB+ PNG string into ~200KB JPEG string
+            const compressedBase64 = await compressImage(frame.imageUrl);
+            
             const videoUrl = await generateVeoVideo(
               `${frame.imagePrompt}, ${stylePrompt}. ABSOLUTELY NO mention of sound, audio, talking, voices or music. Purely visual cinematic movement.`,
-              base64Data
+              compressedBase64
             );
             
             // Critical: Fetch blob for FFmpeg stability
