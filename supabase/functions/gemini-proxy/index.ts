@@ -125,17 +125,20 @@ serve(async (req) => {
             body: JSON.stringify(googlePayload),
         })
 
-        const data = await response.json()
-
         if (!response.ok) {
-            console.error('Gemini API Error:', data)
-            return new Response(JSON.stringify({ error: data.error || data }), {
+            const errText = await response.text();
+            console.error('Gemini API Error:', errText)
+            let errObj;
+            try { errObj = JSON.parse(errText); } catch(e) { errObj = errText; }
+            return new Response(JSON.stringify({ error: errObj.error || errObj }), {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
                 status: response.status,
             })
         }
 
-        return new Response(JSON.stringify(data), {
+        // Stream the JSON response directly from Google to avoid parsing massive base64 payloads locally,
+        // which eats up CPU time and causes WORKER_LIMIT crashes on Edge Functions.
+        return new Response(response.body, {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             status: 200,
         })
