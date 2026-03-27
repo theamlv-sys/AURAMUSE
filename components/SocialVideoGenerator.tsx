@@ -70,15 +70,13 @@ function pcmToWav(pcmBase64: string, sampleRate: number = 24000): Blob {
 // --- Styles ---
 const styles = [
   { name: 'Normal (Cinematic)', prompt: 'cinematic lighting, professional photography, 8k, highly detailed' },
+  { name: 'Stick Figure', prompt: 'minimalist stick figure drawing, simple lines, white background, hand-drawn style' },
+  { name: 'Cartoon', prompt: 'vibrant cartoon style, bold outlines, 2D animation look, colorful' },
+  { name: 'Anime', prompt: 'modern anime style, high contrast, expressive eyes, detailed backgrounds' },
+  { name: 'Cyberpunk', prompt: 'neon lights, futuristic city, dark atmosphere, high tech, glowing elements' },
+  { name: 'Watercolor', prompt: 'soft watercolor painting, artistic brush strokes, pastel colors, dreamy atmosphere' },
+  { name: 'Pixel Art', prompt: 'retro 16-bit pixel art, video game aesthetic, sharp pixels, limited color palette' },
   { name: '3D Render', prompt: 'modern 3D animation style, Pixar inspired, soft lighting, smooth textures' },
-];
-
-const voices = [
-  { name: 'Puck', label: 'Puck (Youthful)' },
-  { name: 'Charon', label: 'Charon (Deep)' },
-  { name: 'Kore', label: 'Kore (Calm)' },
-  { name: 'Fenrir', label: 'Fenrir (Gruff)' },
-  { name: 'Aoede', label: 'Aoede (Expressive)' }
 ];
 
 // --- Component ---
@@ -91,7 +89,6 @@ interface SocialVideoGeneratorProps {
 const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) => {
   const [idea, setIdea] = useState('');
   const [selectedStyle, setSelectedStyle] = useState('Normal (Cinematic)');
-  const [selectedVoice, setSelectedVoice] = useState('Puck');
   const [isRecording, setIsRecording] = useState(false);
   const [project, setProject] = useState<VideoProject | null>(null);
   const [loadingMessage, setLoadingMessage] = useState('');
@@ -226,7 +223,7 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
         {
           responseModalities: ['AUDIO'],
           speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } },
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } },
           },
         }
       );
@@ -310,15 +307,15 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
         const concatCode = await ffmpeg.exec([
           '-f', 'concat', '-safe', '0', '-i', 'concat.txt',
           '-vf', 'scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30',
-          '-c:v', 'libvpx-vp9', '-crf', '30', '-b:v', '0',
+          '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
           '-an',
-          'temp-concat.webm'
+          'temp-concat.mp4'
         ]);
 
         if (concatCode !== 0) throw new Error(`Concat failed (code ${concatCode}). ${lastLog}`);
 
         // — STEP 5c: Mix voiceover audio into the concatenated video —
-        let finalFile = 'temp-concat.webm';
+        let finalFile = 'temp-concat.mp4';
 
         if (audioUrl) {
           setLoadingMessage('Mixing voiceover audio...');
@@ -327,27 +324,27 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
 
           // Use apad to pad audio with silence if voiceover is shorter than video
           const mixCode = await ffmpeg.exec([
-            '-i', 'temp-concat.webm',
+            '-i', 'temp-concat.mp4',
             '-i', 'audio.wav',
             '-filter_complex', '[1:a]apad[a]',
             '-map', '0:v', '-map', '[a]',
             '-c:v', 'copy',
-            '-c:a', 'libopus',
+            '-c:a', 'aac', '-b:a', '128k',
             '-shortest',
-            'final-output.webm'
+            'final-output.mp4'
           ]);
 
           if (mixCode !== 0) {
             console.warn(`Audio mix failed (code ${mixCode}), using silent video. ${lastLog}`);
             // Fall back to silent video
           } else {
-            finalFile = 'final-output.webm';
+            finalFile = 'final-output.mp4';
           }
         }
 
         setLoadingMessage('Preparing download...');
         const data = await ffmpeg.readFile(finalFile);
-        const blob = new Blob([new Uint8Array(data as any)], { type: 'video/webm' });
+        const blob = new Blob([new Uint8Array(data as any)], { type: 'video/mp4' });
         const finalVideoUrl = URL.createObjectURL(blob);
 
         setProject(prev => prev ? { ...prev, finalVideoUrl, status: 'completed' } : null);
@@ -357,9 +354,9 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
         try {
           for (let i = 0; i < vidCount; i++) await ffmpeg.deleteFile(`vid${i}.mp4`);
           await ffmpeg.deleteFile('concat.txt');
-          await ffmpeg.deleteFile('temp-concat.webm');
+          await ffmpeg.deleteFile('temp-concat.mp4');
           if (audioUrl) await ffmpeg.deleteFile('audio.wav');
-          if (finalFile === 'final-output.webm') await ffmpeg.deleteFile('final-output.webm');
+          if (finalFile === 'final-output.mp4') await ffmpeg.deleteFile('final-output.mp4');
         } catch(_) {}
 
       } catch (ffmpegError: any) {
@@ -381,7 +378,7 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
     if (project.finalVideoUrl) {
       const a = document.createElement('a');
       a.href = project.finalVideoUrl;
-      a.download = `AuraDomoMuse-Short-${project.id}.webm`;
+      a.download = `AuraDomoMuse-Short-${project.id}.mp4`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -417,34 +414,34 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
       await ffmpeg.exec([
         '-f', 'concat', '-safe', '0', '-i', 'concat.txt',
         '-vf', 'scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30',
-        '-c:v', 'libvpx-vp9', '-crf', '30', '-b:v', '0',
-        '-an', 'temp-concat.webm'
+        '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
+        '-an', 'temp-concat.mp4'
       ]);
 
-      let finalFile = 'temp-concat.webm';
+      let finalFile = 'temp-concat.mp4';
 
       // Step 3: Mix audio if available
       if (project.audioUrl) {
         const audioData = await fetchFile(project.audioUrl);
         await ffmpeg.writeFile('audio.wav', audioData);
         await ffmpeg.exec([
-          '-i', 'temp-concat.webm', '-i', 'audio.wav',
+          '-i', 'temp-concat.mp4', '-i', 'audio.wav',
           '-filter_complex', '[1:a]apad[a]',
           '-map', '0:v', '-map', '[a]',
-          '-c:v', 'copy', '-c:a', 'libopus',
-          '-shortest', 'final-output.webm'
+          '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k',
+          '-shortest', 'final-output.mp4'
         ]);
-        finalFile = 'final-output.webm';
+        finalFile = 'final-output.mp4';
       }
 
       const data = await ffmpeg.readFile(finalFile);
-      const blob = new Blob([new Uint8Array(data as any)], { type: 'video/webm' });
+      const blob = new Blob([new Uint8Array(data as any)], { type: 'video/mp4' });
       const url = URL.createObjectURL(blob);
 
       // Trigger download
       const a = document.createElement('a');
       a.href = url;
-      a.download = `AuraDomoMuse-Short-${project.id}.webm`;
+      a.download = `AuraDomoMuse-Short-${project.id}.mp4`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -502,26 +499,6 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
                       style={selectedStyle === style.name ? { boxShadow: '0 0 40px rgba(242,125,38,0.15)' } : {}}
                     >
                       {style.name}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <label className="text-xs font-bold uppercase tracking-widest text-white/40">Voice Talent</label>
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                  {voices.map((voice) => (
-                    <button
-                      key={voice.name}
-                      onClick={() => setSelectedVoice(voice.name)}
-                      className={`px-3 py-2 rounded-xl text-[10px] font-bold transition-all border ${
-                        selectedVoice === voice.name 
-                          ? 'bg-blue-500 border-blue-500 text-white' 
-                          : 'bg-white/5 border-white/10 text-white/40 hover:border-white/20'
-                      }`}
-                      style={selectedVoice === voice.name ? { boxShadow: '0 0 40px rgba(59,130,246,0.15)' } : {}}
-                    >
-                      {voice.label}
                     </button>
                   ))}
                 </div>
@@ -677,7 +654,7 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
                           className="px-8 py-3 bg-orange-600 text-white font-bold rounded-full flex items-center gap-2 hover:bg-orange-700 transition-all disabled:opacity-50 shadow-lg"
                           style={{ boxShadow: '0 0 40px rgba(242,125,38,0.15)' }}
                         >
-                          {isExporting ? (<><Loader2 className="animate-spin" size={20} /> Exporting {exportProgress}%</>) : (<><Download size={20} /> Download Web Video</>)}
+                          {isExporting ? (<><Loader2 className="animate-spin" size={20} /> Exporting {exportProgress}%</>) : (<><Download size={20} /> Download Full MP4</>)}
                         </button>
                       </div>
                     </div>
