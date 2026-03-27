@@ -46,10 +46,21 @@ serve(async (req) => {
         if (operationId) {
             const opUrl = `https://generativelanguage.googleapis.com/v1beta/${operationId}?key=${geminiApiKey}`
             const response = await fetch(opUrl, { method: 'GET' })
-            const data = await response.json()
-            return new Response(JSON.stringify(data), {
+            
+            if (!response.ok) {
+                const errText = await response.text();
+                let errObj;
+                try { errObj = JSON.parse(errText); } catch(e) { errObj = errText; }
+                return new Response(JSON.stringify({ error: errObj.error || errObj }), {
+                    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+                    status: response.status,
+                })
+            }
+            // Stream the operation polling response to avoid CPU WORKER_LIMIT crashes 
+            // when Veo returns the massive inline base64 video payload upon completion.
+            return new Response(response.body, {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-                status: response.ok ? 200 : response.status,
+                status: 200,
             })
         }
 
