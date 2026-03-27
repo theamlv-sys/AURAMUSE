@@ -360,26 +360,22 @@ const ProjectSelector: React.FC<ProjectSelectorProps> = ({
               isSidebarOpen={isSidebarOpen}
               theme={theme}
             />
-            {userTier === 'SHOWRUNNER' && (
-              <SidebarItem
-                icon={<VideoIcon />}
-                label="MotionSVG AI"
-                active={view === 'MOTION_SVG'}
-                onClick={() => onNavigate('MOTION_SVG')}
-                isSidebarOpen={isSidebarOpen}
-                theme={theme}
-              />
-            )}
-            {userTier === 'SHOWRUNNER' && (
-              <SidebarItem
-                icon={<SmartphoneIcon />}
-                label="Social Video Gen"
-                active={view === 'SOCIAL_VIDEO'}
-                onClick={() => onNavigate('SOCIAL_VIDEO')}
-                isSidebarOpen={isSidebarOpen}
-                theme={theme}
-              />
-            )}
+            <SidebarItem
+              icon={<VideoIcon />}
+              label="MotionSVG AI"
+              active={view === 'MOTION_SVG'}
+              onClick={() => onNavigate('MOTION_SVG')}
+              isSidebarOpen={isSidebarOpen}
+              theme={theme}
+            />
+            <SidebarItem
+              icon={<SmartphoneIcon />}
+              label="Social Video Gen"
+              active={view === 'SOCIAL_VIDEO'}
+              onClick={() => onNavigate('SOCIAL_VIDEO')}
+              isSidebarOpen={isSidebarOpen}
+              theme={theme}
+            />
           </div>
 
           {/* Bottom Actions */}

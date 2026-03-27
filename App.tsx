@@ -312,12 +312,12 @@ const App: React.FC = () => {
             setViewMode('EDITOR');
             return;
         }
-        if (mode === 'MOTION_SVG' && userTier !== 'SHOWRUNNER') {
-            alert('MotionSVG AI is a Showrunner feature. Please upgrade your plan.');
+        if (mode === 'MOTION_SVG' && session?.user?.email !== 'auraassistantai@auradomo.com') {
+            alert('MotionSVG AI is coming soon.');
             return;
         }
-        if (mode === 'SOCIAL_VIDEO' && userTier !== 'SHOWRUNNER') {
-            alert('Social Video Generator is a Showrunner feature. Please upgrade your plan.');
+        if (mode === 'SOCIAL_VIDEO' && session?.user?.email !== 'auraassistantai@auradomo.com') {
+            alert('Social Video Generator is coming soon.');
             return;
         }
         if (mode === 'LEGAL_PRIVACY' || mode === 'LEGAL_TERMS') {
