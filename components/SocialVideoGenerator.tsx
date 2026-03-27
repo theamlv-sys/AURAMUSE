@@ -67,32 +67,6 @@ function pcmToWav(pcmBase64: string, sampleRate: number = 24000): Blob {
   return new Blob([buffer], { type: 'audio/wav' });
 }
 
-// --- Image Compression helper ---
-// Compresses Nano Banana PNGs (5MB+) into sharp JPEGs (~200KB) to prevent 
-// Supabase payload limits & WORKER_LIMIT crashes on the edge function.
-const compressImage = async (base64Str: string): Promise<string> => {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.fillStyle = '#000';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0);
-        resolve(canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
-      } else {
-        resolve(base64Str.split(',')[1] || "");
-      }
-    };
-    img.onerror = () => resolve(base64Str.split(',')[1] || "");
-    img.src = base64Str.startsWith('data:') ? base64Str : `data:image/png;base64,${base64Str}`;
-  });
-};
-
 // --- Styles ---
 const styles = [
   { name: 'Normal (Cinematic)', prompt: 'cinematic lighting, professional photography, 8k, highly detailed' },
@@ -275,12 +249,10 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
 
         if (frame.imageUrl) {
           try {
-            // Compress massive 5MB+ PNG string into ~200KB JPEG string
-            const compressedBase64 = await compressImage(frame.imageUrl);
-            
+            const base64Data = frame.imageUrl.split(',')[1]?.trim();
             const videoUrl = await generateVeoVideo(
               `${frame.imagePrompt}, ${stylePrompt}. ABSOLUTELY NO mention of sound, audio, talking, voices or music. Purely visual cinematic movement.`,
-              compressedBase64
+              base64Data
             );
             
             // Critical: Fetch blob for FFmpeg stability
@@ -419,13 +391,7 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
     setIsPlaying(false);
     try {
       const ffmpeg = new FFmpeg();
-      let lastLog = '';
-      ffmpeg.on('log', ({ message }) => {
-        console.log('[FFMPEG Export]', message);
-        lastLog = message;
-      });
       ffmpeg.on('progress', ({ progress }) => setExportProgress(Math.round(progress * 100)));
-      
       const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd';
       await ffmpeg.load({
         coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, 'text/javascript'),
@@ -434,82 +400,54 @@ const SocialVideoGenerator: React.FC<SocialVideoGeneratorProps> = ({ onBack }) =
 
       // Step 1: Write clips and concat list
       let concatList = '';
-      let vidCount = 0;
       for (let i = 0; i < project.frames.length; i++) {
         const frame = project.frames[i];
         if (frame.videoUrl) {
-          // Robustly fetch blob to avoid object URL parse crashes in FFmpeg WASM
-          const rawBlob = frame.videoBlob || await fetch(frame.videoUrl).then(r => r.blob());
-          const videoData = await fetchFile(rawBlob);
-          const filename = `vid${vidCount}.mp4`;
-          await ffmpeg.writeFile(filename, videoData);
-          concatList += `file '${filename}'\n`;
-          vidCount++;
+          const videoData = await fetchFile(frame.videoUrl);
+          await ffmpeg.writeFile(`vid${i}.mp4`, videoData);
+          concatList += `file 'vid${i}.mp4'\n`;
         }
       }
-      
-      if (vidCount === 0) throw new Error("No video scenes found to export.");
       await ffmpeg.writeFile('concat.txt', concatList);
 
-      // Step 2: Concat + normalize (same format as generateVideo)
-      const concatCode = await ffmpeg.exec([
+      // Step 2: Concat + normalize
+      await ffmpeg.exec([
         '-f', 'concat', '-safe', '0', '-i', 'concat.txt',
         '-vf', 'scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30',
         '-c:v', 'libx264', '-preset', 'fast', '-crf', '22',
         '-an', 'temp-concat.mp4'
       ]);
 
-      if (concatCode !== 0) {
-        throw new Error(`Concat failed (code ${concatCode}). FFmpeg log: ${lastLog}`);
-      }
-
       let finalFile = 'temp-concat.mp4';
 
       // Step 3: Mix audio if available
       if (project.audioUrl) {
-        const audioBlob = await fetch(project.audioUrl).then(r => r.blob());
-        const audioData = await fetchFile(audioBlob);
+        const audioData = await fetchFile(project.audioUrl);
         await ffmpeg.writeFile('audio.wav', audioData);
-        
-        const mixCode = await ffmpeg.exec([
+        await ffmpeg.exec([
           '-i', 'temp-concat.mp4', '-i', 'audio.wav',
           '-filter_complex', '[1:a]apad[a]',
           '-map', '0:v', '-map', '[a]',
           '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k',
           '-shortest', 'final-output.mp4'
         ]);
-        
-        if (mixCode === 0) {
-          finalFile = 'final-output.mp4';
-        } else {
-          console.warn(`Audio mix failed (code ${mixCode}), falling back to silent video. ${lastLog}`);
-        }
+        finalFile = 'final-output.mp4';
       }
 
       const data = await ffmpeg.readFile(finalFile);
       const blob = new Blob([new Uint8Array(data as any)], { type: 'video/mp4' });
       const url = URL.createObjectURL(blob);
 
-      // Trigger robust download
+      // Trigger download
       const a = document.createElement('a');
-      a.style.display = 'none';
       a.href = url;
       a.download = `AuraDomoMuse-Short-${project.id}.mp4`;
       document.body.appendChild(a);
       a.click();
-      setTimeout(() => document.body.removeChild(a), 100);
+      document.body.removeChild(a);
 
-      // Save for replay
+      // Also save for replay
       setProject(prev => prev ? { ...prev, finalVideoUrl: url } : null);
-
-      // Cleanup
-      try {
-        for (let i = 0; i < vidCount; i++) await ffmpeg.deleteFile(`vid${i}.mp4`);
-        await ffmpeg.deleteFile('concat.txt');
-        await ffmpeg.deleteFile('temp-concat.mp4');
-        if (project.audioUrl) await ffmpeg.deleteFile('audio.wav');
-        if (finalFile === 'final-output.mp4') await ffmpeg.deleteFile('final-output.mp4');
-      } catch (_) {}
 
     } catch (error) {
       console.error("FFmpeg export failed:", error);

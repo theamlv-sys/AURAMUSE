@@ -46,21 +46,10 @@ serve(async (req) => {
         if (operationId) {
             const opUrl = `https://generativelanguage.googleapis.com/v1beta/${operationId}?key=${geminiApiKey}`
             const response = await fetch(opUrl, { method: 'GET' })
-            
-            if (!response.ok) {
-                const errText = await response.text();
-                let errObj;
-                try { errObj = JSON.parse(errText); } catch(e) { errObj = errText; }
-                return new Response(JSON.stringify({ error: errObj.error || errObj }), {
-                    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-                    status: response.status,
-                })
-            }
-            // Stream the operation polling response to avoid CPU WORKER_LIMIT crashes 
-            // when Veo returns the massive inline base64 video payload upon completion.
-            return new Response(response.body, {
+            const data = await response.json()
+            return new Response(JSON.stringify(data), {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-                status: 200,
+                status: response.ok ? 200 : response.status,
             })
         }
 
@@ -136,20 +125,17 @@ serve(async (req) => {
             body: JSON.stringify(googlePayload),
         })
 
+        const data = await response.json()
+
         if (!response.ok) {
-            const errText = await response.text();
-            console.error('Gemini API Error:', errText)
-            let errObj;
-            try { errObj = JSON.parse(errText); } catch(e) { errObj = errText; }
-            return new Response(JSON.stringify({ error: errObj.error || errObj }), {
+            console.error('Gemini API Error:', data)
+            return new Response(JSON.stringify({ error: data.error || data }), {
                 headers: { ...corsHeaders, 'Content-Type': 'application/json' },
                 status: response.status,
             })
         }
 
-        // Stream the JSON response directly from Google to avoid parsing massive base64 payloads locally,
-        // which eats up CPU time and causes WORKER_LIMIT crashes on Edge Functions.
-        return new Response(response.body, {
+        return new Response(JSON.stringify(data), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
             status: 200,
         })
