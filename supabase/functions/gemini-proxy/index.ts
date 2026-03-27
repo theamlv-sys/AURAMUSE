@@ -34,8 +34,8 @@ serve(async (req) => {
                 const errText = await response.text();
                 throw new Error(`Proxy Download Failed: ${response.status} - ${errText}`);
             }
-            const buffer = await response.arrayBuffer();
-            return new Response(buffer, {
+            // Stream the response body directly instead of loading into memory (fixes WORKER_LIMIT)
+            return new Response(response.body, {
                 headers: { ...corsHeaders, 'Content-Type': response.headers.get('Content-Type') || 'application/octet-stream' },
                 status: 200
             })
