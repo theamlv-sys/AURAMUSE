@@ -200,7 +200,7 @@ export const generateWriting = async (
   storyBible: StoryBibleEntry[] = []
 ): Promise<AIResponse> => {
   // Using gemini-3-flash-preview as requested for Search Grounding
-  const modelId = 'gemini-3.1-flash-preview';
+  const modelId = 'gemini-3-flash-preview';
 
   const parts: any[] = [];
   const linkAssets = contextAssets.filter(a => a.type === 'link');
@@ -285,7 +285,7 @@ export const generateWriting = async (
   // Model fallback chain with timeouts (especially important for YouTube videos)
   const hasYouTube = youtubeAssets.length > 0;
   const models = [
-    { id: 'gemini-3.1-flash-preview', timeout: hasYouTube ? 300000 : 120000 },
+    { id: 'gemini-3-flash-preview', timeout: hasYouTube ? 300000 : 120000 },
     { id: 'gemini-3-flash-preview', timeout: hasYouTube ? 300000 : 120000 },
     { id: 'gemini-2.5-flash', timeout: hasYouTube ? 180000 : 120000 },
     { id: 'gemini-2.0-flash', timeout: hasYouTube ? 240000 : 120000 },
@@ -696,7 +696,7 @@ export const analyzeScriptForVoices = async (text: string, direction?: string): 
   cast: { character: string, voice: VoiceName, reason: string }[],
   directorConfig: any
 }> => {
-  const modelId = 'gemini-3.1-flash-preview';
+  const modelId = 'gemini-3-flash-preview';
 
   const prompt = `
     Analyze the following text/script. 
@@ -742,7 +742,7 @@ export const analyzeScriptForVoices = async (text: string, direction?: string): 
 }
 
 export const analyzeCharacterStyle = async (userDescription: string): Promise<{ description: string, style: string, pacing: string, accent: string }> => {
-  const modelId = 'gemini-3.1-flash-preview';
+  const modelId = 'gemini-3-flash-preview';
   const prompt = `
     Based on the user's description of a character, generate the audio director settings.
     USER DESCRIPTION: "${userDescription}"
@@ -771,7 +771,7 @@ export const analyzeCharacterStyle = async (userDescription: string): Promise<{ 
 }
 
 export const formatScriptForTTS = async (text: string, characters: string[]): Promise<string> => {
-  const modelId = 'gemini-3.1-flash-preview';
+  const modelId = 'gemini-3-flash-preview';
   const prompt = `Rewrite the following text into a standard script format optimized for Multi-Speaker Text-to-Speech.
     
     CRITICAL CONSTRAINT: You MUST ONLY use the exact character names listed below as speaker tags. 
@@ -935,7 +935,7 @@ export const generateEmailDraft = async (
   prompt: string,
   history: { role: string; content: string }[] = []
 ): Promise<string> => {
-  const modelId = 'gemini-3.1-flash-preview';
+  const modelId = 'gemini-3-flash-preview';
 
   const systemInstruction = `You are an elite Executive Communications Director.
     Your goal is to write emails that sound 100% human, professional, and authentic.
@@ -1008,7 +1008,7 @@ export const generatePodcastScript = async (
   style: string,
   additionalNotes: string = ''
 ): Promise<string> => {
-  const modelId = 'gemini-3.1-flash-preview';
+  const modelId = 'gemini-3-flash-preview';
 
   const formatGuides: Record<string, string> = {
     talking_head: `FORMAT: Talking Head Video Script
@@ -1086,7 +1086,7 @@ export const generateNewsletterContent = async (
   style: string,
   additionalNotes: string = ''
 ): Promise<{ title: string; subtitle: string; sections: { heading: string; content: string; type: 'text' | 'callout' | 'quote' | 'stat' | 'list' | 'cta' }[] }> => {
-  const modelId = 'gemini-3.1-flash-preview';
+  const modelId = 'gemini-3-flash-preview';
 
   const typeGuides: Record<string, string> = {
     newsletter: `TYPE: Newsletter (1500-2500 words)
@@ -1191,7 +1191,7 @@ export const generateSlideContent = async (
   style: string,
   additionalNotes: string = ''
 ): Promise<{ title: string; slides: { title: string; bullets: string[]; notes: string; layout: 'title' | 'content' | 'two_column' | 'image_focus' | 'quote' | 'section_break' }[] }> => {
-  const modelId = 'gemini-3.1-flash-preview';
+  const modelId = 'gemini-3-flash-preview';
 
   const prompt = `You are a world-class presentation designer and strategist who has created pitch decks that raised $100M+ and keynotes viewed by millions. Your slides are legendary for clarity, impact, and visual storytelling.
 
