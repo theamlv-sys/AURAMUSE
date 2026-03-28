@@ -453,9 +453,9 @@ export const generateStoryboardImage = async (
   prompt: string,
   userTier: SubscriptionTier = 'FREE',
   aspectRatio: "16:9" | "1:1" | "9:16" = "16:9",
-  modelId: 'gemini-2.5-flash-image' | 'gemini-3-pro-image-preview' | 'gemini-3.1-flash-image-preview' = 'gemini-2.5-flash-image'
+  modelId: 'gemini-2.5-flash-image' | 'gemini-3-pro-image-preview' | 'gemini-3-flash-image-preview' = 'gemini-2.5-flash-image'
 ): Promise<string> => {
-  const maxRetries = (modelId === 'gemini-3-pro-image-preview' || modelId === 'gemini-3.1-flash-image-preview') ? 3 : 1;
+  const maxRetries = (modelId === 'gemini-3-pro-image-preview' || modelId === 'gemini-3-flash-image-preview') ? 3 : 1;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
@@ -648,7 +648,7 @@ export const analyzeMediaContext = async (assets: Asset[]): Promise<string> => {
 }
 
 export const generateSVG = async (prompt: string, isPromotional: boolean = false, useProModel: boolean = false): Promise<string> => {
-  const modelId = useProModel ? 'gemini-3.1-pro-preview' : 'gemini-2.5-pro';
+  const modelId = useProModel ? 'gemini-3-pro-preview' : 'gemini-2.5-pro';
   
   const duration = isPromotional ? "30 to 60 seconds" : "15 to 30 seconds";
   // Substantially increased the prompt requirements for Promotional sequences to guarantee multi-scene marketing videos
